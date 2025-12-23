@@ -1,0 +1,19 @@
+
+{
+  "name": "Sam Movies",
+  "short_name": "SamMovies",
+  "description": "Your ultimate personal movie vault and AI oracle.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#6366f1",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2503/2503508.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
