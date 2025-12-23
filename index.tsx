@@ -82,16 +82,16 @@ const MovieActionMenu = ({
   const [customGenre, setCustomGenre] = useState('');
 
   return (
-    <div className="absolute top-10 right-0 z-50">
+    <div className="absolute top-10 left-0 z-50">
       <div className="fixed inset-0 cursor-default" onClick={onClose}></div>
-      <div className="relative glass-dark rounded-2xl border border-white/10 shadow-2xl w-48 sm:w-52 overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="relative glass-dark rounded-2xl border border-white/10 shadow-2xl w-44 sm:w-48 overflow-hidden animate-in zoom-in-95 duration-200 origin-top-left">
         {view === 'main' && (
           <div className="flex flex-col p-1.5">
             <button onClick={() => setView('category')} className="w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hover:bg-white/5 rounded-xl flex justify-between items-center transition-colors">
-              Change Category <svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+              Category <svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
             </button>
             <button onClick={() => setView('genre')} className="w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hover:bg-white/5 rounded-xl flex justify-between items-center transition-colors">
-              Change Genre <svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+              Genre <svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
             </button>
             <div className="h-px bg-white/10 my-1 mx-2"></div>
             <button onClick={() => { if(confirm('Remove from collection?')) onDelete(); }} className="w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hover:bg-rose-500/20 text-rose-500 rounded-xl transition-colors">
@@ -130,7 +130,7 @@ const MovieActionMenu = ({
             <div className="mt-3 p-2 bg-white/5 rounded-xl space-y-2">
               <input 
                 className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-600"
-                placeholder="Custom Genre..."
+                placeholder="Custom..."
                 value={customGenre}
                 onChange={(e) => setCustomGenre(e.target.value)}
                 onKeyDown={(e) => {
@@ -144,7 +144,7 @@ const MovieActionMenu = ({
                 onClick={() => { if (customGenre.trim()) { onUpdateGenre(customGenre.trim()); onClose(); } }}
                 className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-colors"
               >
-                Add New Genre
+                Add Genre
               </button>
             </div>
           </div>
@@ -173,7 +173,8 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   onUpdateGenre, 
   onDelete 
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  // START CLOSED by default
+  const [isOpen, setIsOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
 
   return (
@@ -200,9 +201,8 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
                   onClick={() => onMovieClick(m)}
                   className="absolute inset-0 rounded-2xl overflow-hidden ring-1 ring-white/5 group-hover:ring-indigo-500/50 transition-all shadow-xl cursor-pointer bg-zinc-900"
                 >
-                  <img src={m.poster} className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" />
+                  <img src={m.poster} className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" alt={m.title} />
                   
-                  {/* Status Overlays */}
                   {m.status === 'favorite' && (
                     <div className="absolute top-2 left-2 z-10 bg-yellow-500 text-black p-1 rounded-lg shadow-lg">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
@@ -425,7 +425,14 @@ const App = () => {
     const updated = [finalMovie, ...movies];
     setMovies(updated);
     localStorage.setItem('sam_movies', JSON.stringify(updated));
-    setToast(`${movie.title} added to collection!`);
+    // Refined toast
+    const categoryLabels: Record<string, string> = {
+      'list': 'TO WATCH',
+      'watching': 'WATCHING',
+      'watched': 'WATCHED',
+      'favorite': 'FAVORITE'
+    };
+    setToast(`${movie.title} added to ${categoryLabels[movie.status] || movie.status} category!`);
   };
 
   const updateStatus = async (movie: Movie, status: Movie['status']) => {
@@ -610,7 +617,7 @@ const App = () => {
         <div className="flex items-center gap-4">
            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl flex items-center justify-center font-black text-white text-xl shadow-2xl">S</div>
            <div>
-             <h1 className="text-xl font-black tracking-tighter italic uppercase text-white leading-none">Sam Movies</h1>
+             <h1 className="text-xl font-bold font-questrial tracking-tighter uppercase text-white leading-none">Sam Movies</h1>
              <div className="flex items-center gap-2 mt-1">
                 <div className={`w-1.5 h-1.5 rounded-full transition-all duration-700 ${isSupabaseActive ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-amber-500 animate-pulse'}`}></div>
                 <p className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.2em]">
@@ -684,7 +691,7 @@ const App = () => {
                      <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg className="w-8 h-8 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                      </div>
-                     <p className="text-zinc-500 font-bold italic tracking-tight">No items tagged as "{filter}" in your vault.</p>
+                     <p className="text-zinc-500 font-bold italic tracking-tight">No items in your "{filter}" vault.</p>
                   </div>
                 )}
              </div>
@@ -737,7 +744,7 @@ const App = () => {
                         <svg className="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" strokeWidth="2" strokeLinecap="round"/></svg>
                       </div>
                       <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">Movie Oracle</h3>
-                      <p className="text-zinc-500 text-sm max-w-sm italic">"Looking for a mind-bending thriller similar to Inception..."</p>
+                      <p className="text-zinc-500 text-sm max-w-sm italic">"Recommend a thriller for tonight..."</p>
                    </div>
                 )}
                 {aiHistory.map((m, i) => (
@@ -752,7 +759,7 @@ const App = () => {
                              <img src={r.poster_path ? `https://image.tmdb.org/t/p/w200${r.poster_path}` : 'https://via.placeholder.com/200x300'} className="aspect-[2/3] object-cover group-hover:scale-110 transition-transform duration-700" alt="poster" />
                              <div className="p-4">
                                 <h5 className="text-[10px] font-black uppercase truncate mb-3 tracking-wider">{r.title || r.name}</h5>
-                                <button onClick={async () => { const d = await fetchMovieDetails({ ...r, media_type: r.title ? 'movie' : 'tv' }); saveMovie(d); }} className="w-full py-3 bg-indigo-600 text-[9px] font-black rounded-2xl uppercase tracking-[0.2em] shadow-lg shadow-indigo-600/20">Add To Vault</button>
+                                <button onClick={async () => { const d = await fetchMovieDetails({ ...r, media_type: r.title ? 'movie' : 'tv' }); saveMovie(d); }} className="w-full py-3 bg-indigo-600 text-[9px] font-black rounded-2xl uppercase tracking-[0.2em] shadow-lg shadow-indigo-600/20">Add</button>
                              </div>
                           </div>
                         ))}
