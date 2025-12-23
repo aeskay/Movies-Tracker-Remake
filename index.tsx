@@ -84,6 +84,7 @@ const MovieActionMenu = ({
   return (
     <div className="absolute top-10 left-0 z-50">
       <div className="fixed inset-0 cursor-default" onClick={onClose}></div>
+      {/* Anchor left-0 and use origin-top-left to ensure it expands right and stays visible */}
       <div className="relative glass-dark rounded-2xl border border-white/10 shadow-2xl w-44 sm:w-48 overflow-hidden animate-in zoom-in-95 duration-200 origin-top-left">
         {view === 'main' && (
           <div className="flex flex-col p-1.5">
@@ -173,7 +174,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   onUpdateGenre, 
   onDelete 
 }) => {
-  // START CLOSED by default
+  // START CLOSED by default as requested
   const [isOpen, setIsOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
 
@@ -331,7 +332,6 @@ const App = () => {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [localOnlyCount, setLocalOnlyCount] = useState(0);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -362,9 +362,6 @@ const App = () => {
           const { data, error } = await supabase.from('movie').select('*').order('added_at', { ascending: false });
           if (!error && data) {
             setMovies(data);
-            const cloudTmdbIds = new Set(data.map(m => m.tmdb_id));
-            const diff = localMovies.filter(m => !cloudTmdbIds.has(m.tmdb_id)).length;
-            setLocalOnlyCount(diff);
             return;
           }
         } catch (e) { console.error("Cloud load error:", e); }
@@ -374,38 +371,6 @@ const App = () => {
 
     loadAllData();
   }, [isSupabaseActive]);
-
-  const syncLocalToCloud = async () => {
-    if (!supabase || isSyncing) return;
-    setIsSyncing(true);
-    setToast("Transferring data to cloud vault...");
-
-    try {
-      const saved = localStorage.getItem('sam_movies');
-      if (!saved) return;
-      const localMovies: Movie[] = JSON.parse(saved);
-      
-      const { data: cloudData } = await supabase.from('movie').select('tmdb_id');
-      const cloudIds = new Set(cloudData?.map(m => m.tmdb_id) || []);
-      
-      const toSync = localMovies.filter(m => !cloudIds.has(m.tmdb_id)).map(({ id, ...rest }) => rest);
-      
-      if (toSync.length > 0) {
-        const { error } = await supabase.from('movie').insert(toSync);
-        if (error) throw error;
-      }
-      
-      const { data } = await supabase.from('movie').select('*').order('added_at', { ascending: false });
-      if (data) setMovies(data);
-      setLocalOnlyCount(0);
-      setToast(`Vault Synced! ${toSync.length} items updated.`);
-    } catch (e) {
-      console.error(e);
-      setToast("Connection failed. Check your API settings.");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const saveMovie = async (movie: Movie) => {
     if (movies.find(m => m.tmdb_id === movie.tmdb_id)) {
@@ -425,7 +390,8 @@ const App = () => {
     const updated = [finalMovie, ...movies];
     setMovies(updated);
     localStorage.setItem('sam_movies', JSON.stringify(updated));
-    // Refined toast
+    
+    // Explicit Category Labels for Toast
     const categoryLabels: Record<string, string> = {
       'list': 'TO WATCH',
       'watching': 'WATCHING',
@@ -443,7 +409,7 @@ const App = () => {
     const updated = movies.map(m => (m.id || m.tmdb_id) === (movie.id || movie.tmdb_id) ? updatedMovie : m);
     setMovies(updated);
     localStorage.setItem('sam_movies', JSON.stringify(updated));
-    setToast(`Status: ${status.toUpperCase()}`);
+    setToast(`Moved to ${status.toUpperCase()}`);
   };
 
   const updateGenre = async (movie: Movie, newGenre: string) => {
@@ -617,6 +583,7 @@ const App = () => {
         <div className="flex items-center gap-4">
            <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl flex items-center justify-center font-black text-white text-xl shadow-2xl">S</div>
            <div>
+             {/* STRAIGHT Questrial Font Branding */}
              <h1 className="text-xl font-bold font-questrial tracking-tighter uppercase text-white leading-none">Sam Movies</h1>
              <div className="flex items-center gap-2 mt-1">
                 <div className={`w-1.5 h-1.5 rounded-full transition-all duration-700 ${isSupabaseActive ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-amber-500 animate-pulse'}`}></div>
@@ -628,17 +595,6 @@ const App = () => {
         </div>
         
         <div className="flex items-center gap-4">
-          {localOnlyCount > 0 && isSupabaseActive && (
-            <button 
-              onClick={syncLocalToCloud} 
-              disabled={isSyncing}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600/20 text-emerald-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all animate-bounce"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-              Sync {localOnlyCount}
-            </button>
-          )}
-
           <div className="hidden sm:flex bg-white/5 p-1.5 rounded-2xl border border-white/5">
             {[
               { id: 'collection', label: 'Vault' },
