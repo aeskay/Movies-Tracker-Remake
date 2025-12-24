@@ -418,7 +418,7 @@ const App = () => {
 
   // Sync state to LocalStorage only after initial load is confirmed
   useEffect(() => {
-    if (!hasLoaded) return;
+    if (!hasLoaded || movies.length === 0) return; // Prevent clearing LS with empty state
     localStorage.setItem('sam_movies', JSON.stringify(movies));
   }, [movies, hasLoaded]);
 
@@ -436,8 +436,14 @@ const App = () => {
       let cloudMovies: Movie[] = [];
       if (supabase) {
         try {
+          // Attempt both 'movie' and 'movies' table naming
           const { data, error } = await supabase.from('movie').select('*');
-          if (!error && data) cloudMovies = data;
+          if (!error && data) {
+            cloudMovies = data;
+          } else {
+            const { data: pluralData, error: pluralError } = await supabase.from('movies').select('*');
+            if (!pluralError && pluralData) cloudMovies = pluralData;
+          }
         } catch (e) {}
       }
       
@@ -449,7 +455,8 @@ const App = () => {
         if (m.tmdb_id) uniqueMap.set(Number(m.tmdb_id), m);
       });
       
-      setMovies(Array.from(uniqueMap.values()));
+      const finalMovies = Array.from(uniqueMap.values());
+      setMovies(finalMovies);
       setHasLoaded(true);
     };
 
@@ -500,14 +507,18 @@ const App = () => {
 
     if (supabase) {
       try {
-        const { data } = await supabase.from('movie').select('id').eq('tmdb_id', tmdbId).maybeSingle();
+        const { data: movieCheck } = await supabase.from('movie').select('id').eq('tmdb_id', tmdbId).maybeSingle();
         const { id, ...cleanMovie } = fullMovie as any;
-        if (data) {
-          await supabase.from('movie').update({ status }).eq('id', data.id);
+        if (movieCheck) {
+          await supabase.from('movie').update({ status }).eq('id', movieCheck.id);
         } else {
-          await supabase.from('movie').insert([{ ...cleanMovie, status, tmdb_id: tmdbId }]);
+          const { error: insertError } = await supabase.from('movie').insert([{ ...cleanMovie, status, tmdb_id: tmdbId }]);
+          if (insertError) {
+             // Fallback to movies table
+             await supabase.from('movies').insert([{ ...cleanMovie, status, tmdb_id: tmdbId }]);
+          }
         }
-      } catch (e) { console.error("Cloud sync error:", e); }
+      } catch (e) {}
     }
   };
 
@@ -520,7 +531,8 @@ const App = () => {
     if (supabase) {
       try {
         await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', tmdbId);
-      } catch (e) { console.error("Cloud genre sync error:", e); }
+        await supabase.from('movies').update({ genre: newGenre }).eq('tmdb_id', tmdbId);
+      } catch (e) {}
     }
     setToast(`Genre: ${newGenre}`);
   };
@@ -539,9 +551,8 @@ const App = () => {
     if (supabase) {
       try {
         await supabase.from('movie').delete().eq('tmdb_id', tmdbId);
-      } catch (e) { 
-        console.error("Cloud delete sync error:", e); 
-      }
+        await supabase.from('movies').delete().eq('tmdb_id', tmdbId);
+      } catch (e) {}
     }
   };
 
@@ -773,7 +784,7 @@ const App = () => {
           return res.json();
       }));
       setAiHistory(prev => [...prev, { role: 'model', content: data.reply || "Suggestions:", results: richRecs }]);
-    } catch (e) { console.error(e); }
+    } catch (e) {}
     finally { setIsAiThinking(false); }
   };
 
@@ -937,4 +948,7 @@ const App = () => {
   );
 };
 
-createRoot(document.getElementById('root')!).render(<App />);
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  createRoot(rootElement).render(<App />);
+}
