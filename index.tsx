@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, LiveServerMessage, Modality } from "@google/genai";
@@ -115,7 +114,7 @@ const MovieActionMenu = ({
   const glassClass = theme === 'dark' ? 'glass-dark' : 'glass-light';
 
   return (
-    <div className="absolute top-10 left-8 z-50">
+    <div className="absolute top-10 left-8 z-50" onClick={(e) => e.stopPropagation()}>
       <div className="fixed inset-0 cursor-default" onClick={(e) => { e.stopPropagation(); onClose(); }}></div>
       <div className={`relative ${glassClass} rounded-2xl border ${theme === 'dark' ? 'border-white/10 shadow-2xl' : 'border-zinc-200 shadow-xl'} w-44 sm:w-48 overflow-hidden animate-in zoom-in-95 duration-200 origin-top-left`}>
         {view === 'main' && (
@@ -148,7 +147,7 @@ const MovieActionMenu = ({
         )}
 
         {view === 'genre' && (
-          <div className="flex flex-col p-1.5 max-h-72 overflow-y-auto no-scrollbar" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-col p-1.5 max-h-72 overflow-y-auto no-scrollbar">
             <button onClick={(e) => { e.stopPropagation(); setView('main'); }} className="flex items-center gap-2 px-4 py-2 text-zinc-500 hover:text-indigo-500 transition-colors text-[10px] uppercase font-black mb-1">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
               Back
@@ -388,7 +387,7 @@ const App = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
-  const [toast, setToast] = useState<string | null>(toastContent => toastContent);
+  const [toast, setToast] = useState<string | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -442,10 +441,13 @@ const App = () => {
         } catch (e) {}
       }
       
-      // CRITICAL: Merge Local and Cloud to prevent deletion
       const uniqueMap = new Map();
-      localMovies.forEach(m => uniqueMap.set(Number(m.tmdb_id), m));
-      cloudMovies.forEach(m => uniqueMap.set(Number(m.tmdb_id), m));
+      localMovies.forEach(m => {
+        if (m.tmdb_id) uniqueMap.set(Number(m.tmdb_id), m);
+      });
+      cloudMovies.forEach(m => {
+        if (m.tmdb_id) uniqueMap.set(Number(m.tmdb_id), m);
+      });
       
       setMovies(Array.from(uniqueMap.values()));
       setHasLoaded(true);
@@ -474,7 +476,6 @@ const App = () => {
     if (existing) {
       fullMovie = { ...existing, status };
     } else {
-      // FIX: Check if movieData already contains full metadata to prevent "Untitled" error
       if (movieData.title && movieData.description) {
         fullMovie = { ...movieData, status, added_at: new Date().toISOString(), tmdb_id: tmdbId };
       } else {
@@ -487,7 +488,6 @@ const App = () => {
     const primaryGenre = (fullMovie.genre || 'Movies').split(',')[0].trim();
 
     setMovies(prev => {
-      // Optimized filter/replace
       const newList = prev.filter(m => Number(m.tmdb_id) !== tmdbId);
       return [{ ...fullMovie, status, tmdb_id: tmdbId }, ...newList];
     });
@@ -501,7 +501,6 @@ const App = () => {
     if (supabase) {
       try {
         const { data } = await supabase.from('movie').select('id').eq('tmdb_id', tmdbId).maybeSingle();
-        // STRIP internal id before insert/update
         const { id, ...cleanMovie } = fullMovie as any;
         if (data) {
           await supabase.from('movie').update({ status }).eq('id', data.id);
@@ -530,7 +529,6 @@ const App = () => {
     const tmdbId = Number(movie.tmdb_id);
     if (!tmdbId) return;
 
-    // LOCAL REMOVE (Immediate)
     setMovies(prev => prev.filter(m => Number(m.tmdb_id) !== tmdbId));
     
     if (selectedMovie && Number(selectedMovie.tmdb_id) === tmdbId) {
@@ -538,10 +536,8 @@ const App = () => {
     }
     setToast("Removed from collection");
 
-    // CLOUD REMOVE
     if (supabase) {
       try {
-        // Strict ID match for cloud delete
         await supabase.from('movie').delete().eq('tmdb_id', tmdbId);
       } catch (e) { 
         console.error("Cloud delete sync error:", e); 
