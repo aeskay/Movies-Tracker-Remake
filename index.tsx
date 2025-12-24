@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, LiveServerMessage, Modality } from "@google/genai";
@@ -33,7 +34,7 @@ interface Movie {
   seasons?: number;
   episodes?: number;
   added_at: string;
-  tmdb_id: number;
+  tmdb_id: number; // Required for identity
 }
 
 type Theme = 'dark' | 'light';
@@ -114,19 +115,19 @@ const MovieActionMenu = ({
   const glassClass = theme === 'dark' ? 'glass-dark' : 'glass-light';
 
   return (
-    <div className="absolute top-10 left-8 z-50" onClick={(e) => e.stopPropagation()}>
-      <div className="fixed inset-0 cursor-default" onClick={(e) => { e.stopPropagation(); onClose(); }}></div>
+    <div className="absolute top-10 left-8 z-50">
+      <div className="fixed inset-0 cursor-default" onClick={onClose}></div>
       <div className={`relative ${glassClass} rounded-2xl border ${theme === 'dark' ? 'border-white/10 shadow-2xl' : 'border-zinc-200 shadow-xl'} w-44 sm:w-48 overflow-hidden animate-in zoom-in-95 duration-200 origin-top-left`}>
         {view === 'main' && (
           <div className="flex flex-col p-1.5">
-            <button onClick={(e) => { e.stopPropagation(); setView('category'); }} className={`w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'hover:bg-white/5 text-zinc-300' : 'hover:bg-zinc-100 text-zinc-600'} rounded-xl flex justify-between items-center transition-colors`}>
+            <button onClick={() => setView('category')} className={`w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'hover:bg-white/5 text-zinc-300' : 'hover:bg-zinc-100 text-zinc-600'} rounded-xl flex justify-between items-center transition-colors`}>
               Category <svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
             </button>
-            <button onClick={(e) => { e.stopPropagation(); setView('genre'); }} className={`w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'hover:bg-white/5 text-zinc-300' : 'hover:bg-zinc-100 text-zinc-600'} rounded-xl flex justify-between items-center transition-colors`}>
+            <button onClick={() => setView('genre')} className={`w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest ${theme === 'dark' ? 'hover:bg-white/5 text-zinc-300' : 'hover:bg-zinc-100 text-zinc-600'} rounded-xl flex justify-between items-center transition-colors`}>
               Genre <svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
             </button>
             <div className={`h-px ${theme === 'dark' ? 'bg-white/10' : 'bg-zinc-200'} my-1 mx-2`}></div>
-            <button onClick={(e) => { e.stopPropagation(); if(window.confirm('Remove from collection?')) onDelete(); }} className="w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hover:bg-rose-500/20 text-rose-500 rounded-xl transition-colors">
+            <button onClick={() => { if(confirm('Remove from collection?')) onDelete(); }} className="w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hover:bg-rose-500/20 text-rose-500 rounded-xl transition-colors">
               Delete
             </button>
           </div>
@@ -134,12 +135,12 @@ const MovieActionMenu = ({
 
         {view === 'category' && (
           <div className="flex flex-col p-1.5">
-            <button onClick={(e) => { e.stopPropagation(); setView('main'); }} className="flex items-center gap-2 px-4 py-2 text-zinc-500 hover:text-indigo-500 transition-colors text-[10px] uppercase font-black">
+            <button onClick={() => setView('main')} className="flex items-center gap-2 px-4 py-2 text-zinc-500 hover:text-indigo-500 transition-colors text-[10px] uppercase font-black">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
               Back
             </button>
             {([['list', 'To Watch'], ['watching', 'Watching'], ['watched', 'Watched'], ['favorite', 'Favorite']] as const).map(([s, label]) => (
-              <button key={s} onClick={(e) => { e.stopPropagation(); onUpdateStatus(s); onClose(); }} className={`w-full px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${movie.status === s ? 'bg-indigo-600/20 text-indigo-400' : `${theme === 'dark' ? 'hover:bg-white/5 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'} hover:text-indigo-500`}`}>
+              <button key={s} onClick={() => { onUpdateStatus(s); onClose(); }} className={`w-full px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${movie.status === s ? 'bg-indigo-600/20 text-indigo-400' : `${theme === 'dark' ? 'hover:bg-white/5 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'} hover:text-indigo-500`}`}>
                 {label}
               </button>
             ))}
@@ -148,13 +149,13 @@ const MovieActionMenu = ({
 
         {view === 'genre' && (
           <div className="flex flex-col p-1.5 max-h-72 overflow-y-auto no-scrollbar">
-            <button onClick={(e) => { e.stopPropagation(); setView('main'); }} className="flex items-center gap-2 px-4 py-2 text-zinc-500 hover:text-indigo-500 transition-colors text-[10px] uppercase font-black mb-1">
+            <button onClick={() => setView('main')} className="flex items-center gap-2 px-4 py-2 text-zinc-500 hover:text-indigo-500 transition-colors text-[10px] uppercase font-black mb-1">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
               Back
             </button>
             <div className="space-y-1">
               {existingGenres.map(g => (
-                <button key={g} onClick={(e) => { e.stopPropagation(); onUpdateGenre(g); onClose(); }} className={`w-full px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest rounded-xl transition-colors ${theme === 'dark' ? 'hover:bg-white/5 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'} hover:text-indigo-500`}>
+                <button key={g} onClick={() => { onUpdateGenre(g); onClose(); }} className={`w-full px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-widest rounded-xl transition-colors ${theme === 'dark' ? 'hover:bg-white/5 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'} hover:text-indigo-500`}>
                   {g}
                 </button>
               ))}
@@ -164,18 +165,16 @@ const MovieActionMenu = ({
                 className={`w-full ${theme === 'dark' ? 'bg-black/40 border-white/10 text-white' : 'bg-white border-zinc-200 text-zinc-800'} border rounded-lg px-3 py-2 text-[10px] outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-500`}
                 placeholder="Custom..."
                 value={customGenre}
-                onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setCustomGenre(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && customGenre.trim()) {
-                    e.stopPropagation();
                     onUpdateGenre(customGenre.trim());
                     onClose();
                   }
                 }}
               />
               <button 
-                onClick={(e) => { e.stopPropagation(); if (customGenre.trim()) { onUpdateGenre(customGenre.trim()); onClose(); } }}
+                onClick={() => { if (customGenre.trim()) { onUpdateGenre(customGenre.trim()); onClose(); } }}
                 className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-colors text-white"
               >
                 Add Genre
@@ -209,7 +208,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   onUpdateGenre, 
   onDelete 
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(true); // Default to open
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
 
   return (
@@ -228,10 +227,10 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
       {isOpen && (
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 animate-in slide-in-from-top-2 duration-300">
           {movies.map(m => {
-            const isMenuId = Number(m.tmdb_id);
+            const isMenuId = m.tmdb_id;
             const isMenuOpen = activeMenuId === isMenuId;
             return (
-              <div key={`movie-${isMenuId}`} className={`group relative aspect-[2/3] transition-all duration-300 ${isMenuOpen ? 'z-50' : 'z-0 hover:z-20'}`}>
+              <div key={isMenuId} className={`group relative aspect-[2/3] transition-all duration-300 ${isMenuOpen ? 'z-50' : 'z-0 hover:z-20'}`}>
                 <div 
                   onClick={() => onMovieClick(m)}
                   className={`absolute inset-0 rounded-2xl overflow-hidden ring-1 ${theme === 'dark' ? 'ring-white/5 bg-zinc-900' : 'ring-zinc-200 bg-zinc-100'} group-hover:ring-indigo-500/50 transition-all shadow-xl cursor-pointer`}
@@ -350,7 +349,7 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
               </div>
               {isSaved && (
                 <button 
-                  onClick={() => { if(window.confirm('Permanently remove this from your vault?')) onDelete(); }}
+                  onClick={() => { if(confirm('Permanently remove this from your vault?')) onDelete(); }}
                   className="px-8 py-4 border border-rose-500/20 text-rose-500 hover:bg-rose-500/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
                 >
                   Delete from Vault
@@ -416,47 +415,40 @@ const App = () => {
     document.body.className = theme === 'dark' ? 'bg-[#050505] text-zinc-100 overflow-x-hidden' : 'bg-[#f8fafc] text-slate-900 overflow-x-hidden';
   }, [theme]);
 
-  // Sync state to LocalStorage only after initial load is confirmed
+  // Unified Persistence Layer
   useEffect(() => {
-    if (!hasLoaded || movies.length === 0) return; // Prevent clearing LS with empty state
+    if (!hasLoaded) return;
     localStorage.setItem('sam_movies', JSON.stringify(movies));
   }, [movies, hasLoaded]);
 
   useEffect(() => {
     const loadAllData = async () => {
       let localMovies: Movie[] = [];
-      try {
-        const saved = localStorage.getItem('sam_movies');
-        if (saved) {
+      const saved = localStorage.getItem('sam_movies');
+      if (saved) {
+        try {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) localMovies = parsed;
-        }
-      } catch (e) {}
+        } catch (e) { console.error(e); }
+      }
 
-      let cloudMovies: Movie[] = [];
+      let loadedMovies = localMovies;
+
       if (supabase) {
         try {
-          // Attempt both 'movie' and 'movies' table naming
-          const { data, error } = await supabase.from('movie').select('*');
+          const { data, error } = await supabase.from('movie').select('*').order('added_at', { ascending: false });
           if (!error && data) {
-            cloudMovies = data;
-          } else {
-            const { data: pluralData, error: pluralError } = await supabase.from('movies').select('*');
-            if (!pluralError && pluralData) cloudMovies = pluralData;
+            loadedMovies = data;
           }
-        } catch (e) {}
+        } catch (e) { console.error("Cloud load error:", e); }
       }
       
       const uniqueMap = new Map();
-      localMovies.forEach(m => {
-        if (m.tmdb_id) uniqueMap.set(Number(m.tmdb_id), m);
-      });
-      cloudMovies.forEach(m => {
+      loadedMovies.forEach(m => {
         if (m.tmdb_id) uniqueMap.set(Number(m.tmdb_id), m);
       });
       
-      const finalMovies = Array.from(uniqueMap.values());
-      setMovies(finalMovies);
+      setMovies(Array.from(uniqueMap.values()));
       setHasLoaded(true);
     };
 
@@ -474,85 +466,76 @@ const App = () => {
   };
 
   const updateStatus = async (movieData: any, status: Movie['status']) => {
-    const tmdbId = Number(movieData.tmdb_id || movieData.id);
-    if (!tmdbId) return;
-
+    // 1. Resolve full movie details if it's coming from search
     let fullMovie: Movie;
-    const existing = getSavedMovie(tmdbId);
+    const tmdbId = Number(movieData.id || movieData.tmdb_id);
 
+    // If already saved, just update status
+    const existing = getSavedMovie(tmdbId);
     if (existing) {
       fullMovie = { ...existing, status };
     } else {
-      if (movieData.title && movieData.description) {
-        fullMovie = { ...movieData, status, added_at: new Date().toISOString(), tmdb_id: tmdbId };
-      } else {
-        const details = await fetchMovieDetails(movieData);
-        fullMovie = { ...details, status };
-      }
+      // It's a new add from search, fetch full details first
+      const details = await fetchMovieDetails(movieData);
+      fullMovie = { ...details, status };
     }
 
-    const finalTitle = fullMovie.title || "Unknown Title";
-    const primaryGenre = (fullMovie.genre || 'Movies').split(',')[0].trim();
-
+    // 2. Functional update to prevent race conditions & duplicates
     setMovies(prev => {
-      const newList = prev.filter(m => Number(m.tmdb_id) !== tmdbId);
-      return [{ ...fullMovie, status, tmdb_id: tmdbId }, ...newList];
+      const idx = prev.findIndex(m => Number(m.tmdb_id) === tmdbId);
+      if (idx !== -1) {
+        const updated = [...prev];
+        updated[idx] = fullMovie;
+        return updated;
+      }
+      return [fullMovie, ...prev];
     });
 
-    setToast(existing ? `Moved to ${status.toUpperCase()}` : `${finalTitle} added to ${primaryGenre}!`);
+    // 3. UI Feedback
+    const primaryGenre = fullMovie.genre.split(',')[0].trim();
+    setToast(existing ? `Moved to ${status.toUpperCase()}` : `${fullMovie.title} added to ${primaryGenre}!`);
     
+    // 4. Update selected movie reference
     if (selectedMovie && Number(selectedMovie.tmdb_id) === tmdbId) {
-      setSelectedMovie({ ...fullMovie, status });
+      setSelectedMovie(fullMovie);
     }
 
+    // 5. Cloud Sync
     if (supabase) {
       try {
-        const { data: movieCheck } = await supabase.from('movie').select('id').eq('tmdb_id', tmdbId).maybeSingle();
-        const { id, ...cleanMovie } = fullMovie as any;
-        if (movieCheck) {
-          await supabase.from('movie').update({ status }).eq('id', movieCheck.id);
+        const { data } = await supabase.from('movie').select('id').eq('tmdb_id', tmdbId).maybeSingle();
+        if (data) {
+          await supabase.from('movie').update({ status }).eq('id', data.id);
         } else {
-          const { error: insertError } = await supabase.from('movie').insert([{ ...cleanMovie, status, tmdb_id: tmdbId }]);
-          if (insertError) {
-             // Fallback to movies table
-             await supabase.from('movies').insert([{ ...cleanMovie, status, tmdb_id: tmdbId }]);
-          }
+          await supabase.from('movie').insert([fullMovie]);
         }
-      } catch (e) {}
+      } catch (e) { console.error("Cloud sync error:", e); }
     }
   };
 
   const updateGenre = async (movie: Movie, newGenre: string) => {
-    const tmdbId = Number(movie.tmdb_id);
     setMovies(prev => prev.map(m => 
-        Number(m.tmdb_id) === tmdbId ? { ...m, genre: newGenre } : m
+        Number(m.tmdb_id) === Number(movie.tmdb_id) ? { ...m, genre: newGenre } : m
     ));
 
     if (supabase) {
       try {
-        await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', tmdbId);
-        await supabase.from('movies').update({ genre: newGenre }).eq('tmdb_id', tmdbId);
-      } catch (e) {}
+        await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', Number(movie.tmdb_id));
+      } catch (e) { console.error("Cloud genre sync error:", e); }
     }
     setToast(`Genre: ${newGenre}`);
   };
 
   const handleDelete = async (movie: Movie) => {
     const tmdbId = Number(movie.tmdb_id);
-    if (!tmdbId) return;
-
     setMovies(prev => prev.filter(m => Number(m.tmdb_id) !== tmdbId));
-    
-    if (selectedMovie && Number(selectedMovie.tmdb_id) === tmdbId) {
-      setSelectedMovie(null);
-    }
+    setSelectedMovie(null);
     setToast("Removed from collection");
 
     if (supabase) {
       try {
         await supabase.from('movie').delete().eq('tmdb_id', tmdbId);
-        await supabase.from('movies').delete().eq('tmdb_id', tmdbId);
-      } catch (e) {}
+      } catch (e) { console.error("Cloud delete sync error:", e); }
     }
   };
 
@@ -694,8 +677,7 @@ const App = () => {
   };
 
   const fetchMovieDetails = async (item: any): Promise<Movie> => {
-    const movieId = item.tmdb_id || item.id;
-    const res = await fetch(`https://api.themoviedb.org/3/${item.media_type || 'movie'}/${movieId}?api_key=${TMDB_API_KEY}&append_to_response=credits,videos`);
+    const res = await fetch(`https://api.themoviedb.org/3/${item.media_type || 'movie'}/${item.id}?api_key=${TMDB_API_KEY}&append_to_response=credits,videos`);
     const d = await res.json();
     const trailer = d.videos?.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube');
     
@@ -715,7 +697,7 @@ const App = () => {
       seasons: d.number_of_seasons,
       episodes: d.number_of_episodes,
       added_at: new Date().toISOString(),
-      tmdb_id: Number(d.id || item.tmdb_id)
+      tmdb_id: Number(d.id)
     };
   };
 
@@ -784,15 +766,9 @@ const App = () => {
           return res.json();
       }));
       setAiHistory(prev => [...prev, { role: 'model', content: data.reply || "Suggestions:", results: richRecs }]);
-    } catch (e) {}
+    } catch (e) { console.error(e); }
     finally { setIsAiThinking(false); }
   };
-
-  const displayedMovie = useMemo(() => {
-    if (!selectedMovie) return null;
-    const saved = getSavedMovie(selectedMovie.tmdb_id);
-    return saved ? { ...selectedMovie, ...saved } : selectedMovie;
-  }, [selectedMovie, movies]);
 
   const navGlass = theme === 'dark' ? 'glass-dark' : 'glass-light';
   const tabBtnClass = (id: string) => `px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === id ? 'bg-indigo-600 text-white shadow-xl' : `${theme === 'dark' ? 'text-zinc-500 hover:text-white' : 'text-zinc-400 hover:text-indigo-600'}`}`;
@@ -832,7 +808,7 @@ const App = () => {
              </div>
              <div className="space-y-14">
                 {groupedMovies.length > 0 ? groupedMovies.map(([genre, list]) => (
-                    <GenreGroup key={`genre-${genre}`} genre={genre} movies={list} theme={theme} existingGenres={uniqueGenres} onMovieClick={setSelectedMovie} onUpdateStatus={updateStatus} onUpdateGenre={updateGenre} onDelete={handleDelete} />
+                    <GenreGroup key={genre} genre={genre} movies={list} theme={theme} existingGenres={uniqueGenres} onMovieClick={setSelectedMovie} onUpdateStatus={updateStatus} onUpdateGenre={updateGenre} onDelete={handleDelete} />
                   )) : (
                   <div className="py-40 text-center space-y-4 opacity-50">
                      <div className={`w-16 h-16 ${theme === 'dark' ? 'bg-white/5' : 'bg-zinc-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
@@ -857,7 +833,7 @@ const App = () => {
              </div>
              <div className="grid grid-cols-1 gap-5">
                 {searchResults.map(item => (
-                  <div key={`search-${item.id}`} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-5 rounded-[32px] border flex gap-8 items-center group hover:border-indigo-500/40 transition-all shadow-2xl`}>
+                  <div key={item.id} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-5 rounded-[32px] border flex gap-8 items-center group hover:border-indigo-500/40 transition-all shadow-2xl`}>
                     <div className="w-20 h-28 rounded-2xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg cursor-pointer" onClick={() => handlePreviewMovie(item)}>
                        <img src={item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : 'https://via.placeholder.com/200x300'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
                     </div>
@@ -892,12 +868,12 @@ const App = () => {
                    </div>
                 )}
                 {aiHistory.map((m, i) => (
-                  <div key={`ai-${i}`} className={`flex flex-col gap-5 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div key={i} className={`flex flex-col gap-5 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`p-6 rounded-[32px] max-w-[85%] text-sm font-semibold shadow-lg ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : `${theme === 'dark' ? 'bg-white/5 text-zinc-300' : 'bg-zinc-100 text-slate-700'} rounded-tl-none`}`}>{m.content}</div>
                     {m.results && (
                       <div className="flex gap-5 overflow-x-auto w-full no-scrollbar py-2">
                         {m.results.map((r: any) => (
-                          <div key={`ai-result-${r.id}`} className={`${theme === 'dark' ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200'} min-w-[200px] rounded-[32px] overflow-hidden group border transition-all hover:-translate-y-2 hover:border-indigo-500/50 shadow-md`}>
+                          <div key={r.id} className={`${theme === 'dark' ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200'} min-w-[200px] rounded-[32px] overflow-hidden group border transition-all hover:-translate-y-2 hover:border-indigo-500/50 shadow-md`}>
                              <img src={r.poster_path ? `https://image.tmdb.org/t/p/w200${r.poster_path}` : 'https://via.placeholder.com/200x300'} className="aspect-[2/3] object-cover group-hover:scale-110 transition-transform duration-700 cursor-pointer" alt="poster" onClick={() => handlePreviewMovie(r)} />
                              <div className="p-4 space-y-2">
                                 <h5 className={`text-[10px] font-black uppercase truncate tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{r.title || r.name}</h5>
@@ -933,22 +909,12 @@ const App = () => {
          ))}
       </nav>
 
-      {displayedMovie && (
-        <DetailModal 
-          movie={displayedMovie} 
-          theme={theme} 
-          isSaved={isMovieSaved(displayedMovie.tmdb_id)} 
-          onClose={() => setSelectedMovie(null)} 
-          onUpdateStatus={(s) => updateStatus(displayedMovie, s)} 
-          onDelete={() => handleDelete(displayedMovie)} 
-        />
+      {selectedMovie && (
+        <DetailModal movie={selectedMovie} theme={theme} isSaved={isMovieSaved(selectedMovie.tmdb_id)} onClose={() => setSelectedMovie(null)} onUpdateStatus={(s) => updateStatus(selectedMovie, s)} onDelete={() => handleDelete(selectedMovie)} />
       )}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
     </div>
   );
 };
 
-const rootElement = document.getElementById('root');
-if (rootElement) {
-  createRoot(rootElement).render(<App />);
-}
+createRoot(document.getElementById('root')!).render(<App />);
