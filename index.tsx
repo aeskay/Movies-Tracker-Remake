@@ -257,11 +257,11 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   );
 };
 
-const DetailModal = ({ movie, theme, onClose, onUpdateStatus, onDelete }: { movie: Movie, theme: Theme, onClose: () => void, onUpdateStatus: (s: Movie['status']) => void | Promise<any>, onDelete: () => void | Promise<any> }) => {
+const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete }: { movie: Movie, theme: Theme, isSaved: boolean, onClose: () => void, onUpdateStatus: (s: Movie['status']) => void | Promise<any>, onDelete: () => void | Promise<any> }) => {
   const trailerId = movie.trailer?.split('v=')[1];
   const glassClass = theme === 'dark' ? 'glass-dark' : 'glass-light';
   const textClass = theme === 'dark' ? 'text-zinc-100' : 'text-slate-900';
-  
+
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/95 backdrop-blur-md animate-in fade-in duration-300" onClick={onClose}></div>
@@ -270,38 +270,49 @@ const DetailModal = ({ movie, theme, onClose, onUpdateStatus, onDelete }: { movi
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
 
-        <div className="relative aspect-video w-full bg-zinc-900 overflow-hidden">
+        <div className="relative aspect-video w-full bg-black overflow-hidden shadow-inner">
           {trailerId ? (
-            <iframe className="w-full h-full scale-105" src={`https://www.youtube.com/embed/${trailerId}?autoplay=1`} allow="autoplay" allowFullScreen title="trailer"></iframe>
+            <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${trailerId}?autoplay=1`} allow="autoplay" allowFullScreen title="trailer"></iframe>
           ) : (
-            <img src={movie.poster} className="w-full h-full object-cover blur-3xl opacity-40" alt="poster-blur" />
-          )}
-          <div className={`absolute bottom-0 left-0 w-full p-8 bg-gradient-to-t ${theme === 'dark' ? 'from-zinc-950 via-zinc-950/80' : 'from-zinc-900 via-zinc-900/60'} to-transparent`}>
-            <h2 className="text-4xl font-black text-white leading-tight tracking-tight">{movie.title}</h2>
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-yellow-500 font-black text-sm">★ {movie.rating?.toFixed(1)}</span>
-              <span className="w-1 h-1 rounded-full bg-zinc-500"></span>
-              <span className="text-zinc-300 font-bold text-xs uppercase tracking-widest">{movie.release_year} • {movie.genre}</span>
+            <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+               <img src={movie.poster} className="w-full h-full object-cover blur-3xl opacity-40 absolute inset-0" alt="poster-blur" />
+               <p className="relative text-zinc-500 font-black uppercase tracking-widest text-[10px]">No Trailer Available</p>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="p-8 space-y-8">
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <h2 className={`text-3xl sm:text-4xl font-black leading-tight tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{movie.title}</h2>
+              {!isSaved && <span className="bg-indigo-600/20 text-indigo-400 text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest border border-indigo-600/30">Preview</span>}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-yellow-500 font-black text-sm">★ {movie.rating?.toFixed(1)}</span>
+              <span className={`w-1 h-1 rounded-full ${theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'}`}></span>
+              <span className={`font-bold text-xs uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-500'}`}>{movie.release_year} • {movie.genre}</span>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-3">
             {[
               { id: 'list', label: 'To Watch', color: 'indigo' },
               { id: 'watching', label: 'Watching', color: 'amber' },
               { id: 'watched', label: 'Watched', color: 'emerald' },
               { id: 'favorite', label: 'Favorite', color: 'rose' }
-            ].map(btn => (
-              <button 
-                key={btn.id}
-                onClick={() => onUpdateStatus(btn.id as any)}
-                className={`flex-1 min-w-[120px] px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${movie.status === btn.id ? `bg-${btn.color}-600 border-transparent text-white shadow-xl scale-[1.02]` : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-zinc-500 hover:bg-white/10' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:bg-zinc-200'} hover:text-indigo-600`}`}
-              >
-                {btn.label}
-              </button>
-            ))}
+            ].map(btn => {
+              // ONLY active if movie is saved AND status matches
+              const isActive = isSaved && movie.status === btn.id;
+              return (
+                <button 
+                  key={btn.id}
+                  onClick={() => onUpdateStatus(btn.id as any)}
+                  className={`flex-1 min-w-[120px] px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${isActive ? `bg-${btn.color}-600 border-transparent text-white shadow-xl scale-[1.02]` : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-zinc-500 hover:bg-white/10 hover:border-indigo-600/30' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:bg-zinc-200 hover:border-indigo-600/30'} hover:text-indigo-600`}`}
+                >
+                  {btn.label}
+                </button>
+              );
+            })}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 pb-10">
@@ -310,6 +321,14 @@ const DetailModal = ({ movie, theme, onClose, onUpdateStatus, onDelete }: { movi
                 <h3 className="text-indigo-500 font-black uppercase tracking-widest text-[11px] mb-3">Storyline</h3>
                 <p className={`${theme === 'dark' ? 'text-zinc-300' : 'text-slate-600'} leading-relaxed text-base font-medium`}>{movie.description}</p>
               </div>
+              {isSaved && (
+                <button 
+                  onClick={() => { if(confirm('Permanently remove this from your vault?')) onDelete(); }}
+                  className="px-8 py-4 border border-rose-500/20 text-rose-500 hover:bg-rose-500/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  Delete from Vault
+                </button>
+              )}
             </div>
             <div className="space-y-8">
               <div>
@@ -341,19 +360,23 @@ const App = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   
+  const [aiInput, setAiInput] = useState('');
   const [aiHistory, setAiHistory] = useState<{ role: string, content: string, results?: any[] }[]>([]);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
+  const activeTabRef = useRef(activeTab);
 
   const isSupabaseActive = !!supabase;
+
+  // Sync tab ref for session callbacks
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
   // --- Persistence ---
   useEffect(() => {
@@ -390,15 +413,16 @@ const App = () => {
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
   const saveMovie = async (movie: Movie) => {
-    if (movies.find(m => m.tmdb_id === movie.tmdb_id)) {
+    const existing = movies.find(m => m.tmdb_id === movie.tmdb_id);
+    if (existing) {
       setToast("Already in your collection!");
       return;
     }
 
-    let finalMovie = movie;
+    let finalMovie = { ...movie, added_at: new Date().toISOString() };
     if (supabase) {
       try {
-        const { data, error } = await supabase.from('movie').insert([movie]).select();
+        const { data, error } = await supabase.from('movie').insert([finalMovie]).select();
         if (error) throw error;
         if (data && data[0]) finalMovie = data[0];
       } catch (e) { console.error("Cloud save error:", e); }
@@ -410,9 +434,21 @@ const App = () => {
     
     const primaryGenre = movie.genre.split(',')[0].trim().toUpperCase();
     setToast(`${movie.title} added to ${primaryGenre} genre!`);
+    
+    // Update local preview state if open
+    if (selectedMovie && selectedMovie.tmdb_id === movie.tmdb_id) {
+        setSelectedMovie(finalMovie);
+    }
   };
 
   const updateStatus = async (movie: Movie, status: Movie['status']) => {
+    // If it's not saved yet (no matter if ID exists, if it's not in movies array), save it
+    const isSavedAlready = movies.some(m => m.tmdb_id === movie.tmdb_id);
+    if (!isSavedAlready) {
+        await saveMovie({ ...movie, status });
+        return;
+    }
+
     const updatedMovie = { ...movie, status };
     if (supabase && movie.id) {
       await supabase.from('movie').update({ status }).eq('id', movie.id);
@@ -421,6 +457,10 @@ const App = () => {
     setMovies(updated);
     localStorage.setItem('sam_movies', JSON.stringify(updated));
     setToast(`Moved to ${status.toUpperCase()}`);
+    
+    if (selectedMovie && selectedMovie.tmdb_id === movie.tmdb_id) {
+        setSelectedMovie(updatedMovie);
+    }
   };
 
   const updateGenre = async (movie: Movie, newGenre: string) => {
@@ -443,8 +483,22 @@ const App = () => {
     setToast("Removed from collection");
   };
 
+  const stopVoiceSearch = () => {
+    if (sessionPromiseRef.current) {
+        sessionPromiseRef.current.then(session => {
+            try { session.close(); } catch (e) {}
+        });
+        sessionPromiseRef.current = null;
+    }
+    setIsVoiceActive(false);
+  };
+
   const handleVoiceSearch = async () => {
-    if (isVoiceActive) return;
+    if (isVoiceActive) {
+      stopVoiceSearch();
+      return;
+    }
+
     setIsVoiceActive(true);
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
@@ -460,9 +514,11 @@ const App = () => {
                     const processor = audioCtx.createScriptProcessor(4096, 1, 1);
                     processor.onaudioprocess = (e) => {
                         const data = e.inputBuffer.getChannelData(0);
-                        sessionPromiseRef.current?.then(session => {
-                          session.sendRealtimeInput({ media: { data: encodePCM(data), mimeType: 'audio/pcm;rate=16000' } });
-                        });
+                        if (sessionPromiseRef.current) {
+                            sessionPromiseRef.current.then(session => {
+                              session.sendRealtimeInput({ media: { data: encodePCM(data), mimeType: 'audio/pcm;rate=16000' } });
+                            });
+                        }
                     };
                     source.connect(processor); processor.connect(audioCtx.destination);
                 },
@@ -470,22 +526,29 @@ const App = () => {
                     if (msg.serverContent?.inputTranscription) {
                         const text = msg.serverContent.inputTranscription.text;
                         if (text) {
-                            setSearchQuery(prev => prev + text);
-                            handleSearch(text);
+                            if (activeTabRef.current === 'discover') {
+                                setSearchQuery(prev => {
+                                    const next = prev + " " + text;
+                                    handleSearch(next.trim());
+                                    return next.trim();
+                                });
+                            } else if (activeTabRef.current === 'ai') {
+                                setAiInput(prev => (prev + " " + text).trim());
+                            }
                         }
                     }
-                    if (msg.serverContent?.turnComplete) { setIsVoiceActive(false); }
+                    if (msg.serverContent?.turnComplete) { }
                 },
                 onclose: () => setIsVoiceActive(false),
                 onerror: () => setIsVoiceActive(false)
             },
             config: { 
-                responseModalities: [Modality.AUDIO],
+                responseModalalities: [Modality.AUDIO],
                 inputAudioTranscription: {}
             }
         });
     } catch (err) {
-        console.error(err);
+        console.error("Voice start error:", err);
         setIsVoiceActive(false);
     }
   };
@@ -528,6 +591,19 @@ const App = () => {
     };
   };
 
+  const handlePreviewMovie = async (item: any) => {
+    // Check if already in vault
+    const existing = movies.find(m => m.tmdb_id === item.id || m.tmdb_id === item.tmdb_id);
+    if (existing) {
+        setSelectedMovie(existing);
+        return;
+    }
+
+    // Otherwise fetch preview data
+    const details = await fetchMovieDetails(item);
+    setSelectedMovie(details);
+  };
+
   const uniqueGenres = useMemo(() => {
     const set = new Set<string>();
     movies.forEach(m => {
@@ -552,6 +628,7 @@ const App = () => {
     if (!prompt.trim()) return;
     setIsAiThinking(true);
     setAiHistory(prev => [...prev, { role: 'user', content: prompt }]);
+    setAiInput('');
     
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
@@ -596,6 +673,11 @@ const App = () => {
         : `${theme === 'dark' ? 'text-zinc-500 hover:text-white' : 'text-zinc-400 hover:text-indigo-600'}`
     }`;
 
+  const isSelectedSaved = useMemo(() => {
+    if (!selectedMovie) return false;
+    return movies.some(m => m.tmdb_id === selectedMovie.tmdb_id);
+  }, [selectedMovie, movies]);
+
   return (
     <div className={`min-h-screen pb-24 sm:pb-0 selection:bg-indigo-500/30 transition-colors duration-500`}>
       <nav className={`${navGlass} sticky top-0 z-50 px-6 py-5 flex items-center justify-between border-b ${theme === 'dark' ? 'border-white/5' : 'border-zinc-200'}`}>
@@ -613,7 +695,6 @@ const App = () => {
         </div>
         
         <div className="flex items-center gap-6">
-          {/* THEME TOGGLE BUTTON */}
           <button 
             onClick={toggleTheme}
             className={`p-2.5 rounded-2xl transition-all shadow-lg ${theme === 'dark' ? 'bg-white/5 text-yellow-400 hover:bg-white/10' : 'bg-zinc-100 text-indigo-600 hover:bg-zinc-200 border border-zinc-200'}`}
@@ -703,18 +784,31 @@ const App = () => {
 
              <div className="grid grid-cols-1 gap-5">
                 {searchResults.map(item => (
-                  <div key={item.id} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-5 rounded-[32px] border flex gap-8 items-center group cursor-pointer hover:border-indigo-500/40 transition-all shadow-2xl`} onClick={async () => { const details = await fetchMovieDetails(item); saveMovie(details); setActiveTab('collection'); }}>
-                    <div className="w-20 h-28 rounded-2xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg">
+                  <div key={item.id} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-5 rounded-[32px] border flex gap-8 items-center group hover:border-indigo-500/40 transition-all shadow-2xl`}>
+                    <div className="w-20 h-28 rounded-2xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg cursor-pointer" onClick={() => handlePreviewMovie(item)}>
                        <img src={item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : 'https://via.placeholder.com/200x300'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 cursor-pointer" onClick={() => handlePreviewMovie(item)}>
                        <h4 className={`font-black text-xl leading-tight tracking-tight group-hover:text-indigo-500 transition-colors ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title || item.name}</h4>
                        <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} font-black uppercase tracking-widest mt-1`}>
                           {item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || 'TBA'} • {item.media_type}
                        </p>
                     </div>
-                    <div className={`${theme === 'dark' ? 'bg-white/5 text-white' : 'bg-zinc-100 text-zinc-400'} p-4 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white transition-all`}>
-                       <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                    <div className="flex gap-2">
+                       <button 
+                         onClick={() => handlePreviewMovie(item)}
+                         className={`${theme === 'dark' ? 'bg-white/5 text-zinc-400' : 'bg-zinc-100 text-zinc-500'} p-4 rounded-2xl hover:bg-indigo-600/20 hover:text-indigo-500 transition-all`}
+                         title="View Details"
+                       >
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                       </button>
+                       <button 
+                         onClick={async () => { const details = await fetchMovieDetails(item); saveMovie(details); setActiveTab('collection'); }}
+                         className={`${theme === 'dark' ? 'bg-white/5 text-white' : 'bg-zinc-100 text-zinc-400'} p-4 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all`}
+                         title="Quick Add"
+                       >
+                          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                       </button>
                     </div>
                   </div>
                 ))}
@@ -746,11 +840,29 @@ const App = () => {
                     {m.results && (
                       <div className="flex gap-5 overflow-x-auto w-full no-scrollbar py-2">
                         {m.results.map((r: any) => (
-                          <div key={r.id} className={`${theme === 'dark' ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200'} min-w-[150px] rounded-[32px] overflow-hidden group border transition-all hover:-translate-y-2 hover:border-indigo-500/50 shadow-md`}>
-                             <img src={r.poster_path ? `https://image.tmdb.org/t/p/w200${r.poster_path}` : 'https://via.placeholder.com/200x300'} className="aspect-[2/3] object-cover group-hover:scale-110 transition-transform duration-700" alt="poster" />
-                             <div className="p-4">
-                                <h5 className={`text-[10px] font-black uppercase truncate mb-3 tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{r.title || r.name}</h5>
-                                <button onClick={async () => { const d = await fetchMovieDetails({ ...r, media_type: r.title ? 'movie' : 'tv' }); saveMovie(d); }} className="w-full py-3 bg-indigo-600 text-white text-[9px] font-black rounded-2xl uppercase tracking-[0.2em] shadow-lg shadow-indigo-600/20">Add</button>
+                          <div key={r.id} className={`${theme === 'dark' ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200'} min-w-[200px] rounded-[32px] overflow-hidden group border transition-all hover:-translate-y-2 hover:border-indigo-500/50 shadow-md`}>
+                             <img 
+                               src={r.poster_path ? `https://image.tmdb.org/t/p/w200${r.poster_path}` : 'https://via.placeholder.com/200x300'} 
+                               className="aspect-[2/3] object-cover group-hover:scale-110 transition-transform duration-700 cursor-pointer" 
+                               alt="poster" 
+                               onClick={() => handlePreviewMovie(r)}
+                             />
+                             <div className="p-4 space-y-2">
+                                <h5 className={`text-[10px] font-black uppercase truncate tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{r.title || r.name}</h5>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => handlePreviewMovie(r)}
+                                        className="flex-1 py-3 bg-zinc-800 text-zinc-400 text-[8px] font-black rounded-xl uppercase tracking-widest hover:bg-zinc-700 hover:text-white transition-all"
+                                    >
+                                        View
+                                    </button>
+                                    <button 
+                                        onClick={async () => { const d = await fetchMovieDetails({ ...r, media_type: r.title ? 'movie' : 'tv' }); saveMovie(d); }} 
+                                        className="flex-[1.5] py-3 bg-indigo-600 text-white text-[8px] font-black rounded-xl uppercase tracking-widest shadow-lg shadow-indigo-600/20"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
                              </div>
                           </div>
                         ))}
@@ -768,7 +880,9 @@ const App = () => {
                 <input 
                   className={`flex-1 ${theme === 'dark' ? 'bg-zinc-900 border-white/5 text-white' : 'bg-white border-zinc-200 text-slate-800'} border rounded-3xl px-8 py-5 text-base font-medium focus:ring-4 focus:ring-indigo-600/10 outline-none transition-all placeholder:text-zinc-500`}
                   placeholder="Ask the Oracle..."
-                  onKeyDown={(e) => { if (e.key === 'Enter') { askAi(e.currentTarget.value); e.currentTarget.value = ''; } }}
+                  value={aiInput}
+                  onChange={(e) => setAiInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { askAi(aiInput); } }}
                 />
              </div>
           </div>
@@ -794,6 +908,7 @@ const App = () => {
         <DetailModal 
           movie={selectedMovie} 
           theme={theme}
+          isSaved={isSelectedSaved}
           onClose={() => setSelectedMovie(null)} 
           onUpdateStatus={(s) => updateStatus(selectedMovie, s)}
           onDelete={() => handleDelete(selectedMovie)}
