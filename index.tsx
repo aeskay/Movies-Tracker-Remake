@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, LiveServerMessage, Modality } from "@google/genai";
@@ -491,7 +490,8 @@ const App = () => {
         }
       } catch (e) { console.error("Cloud sync error:", e); }
     }
-    setToast(`${movie.title} added!`);
+    const primaryGenre = (movie.genre || 'Uncategorized').split(',')[0].trim();
+    setToast(`${movie.title} added to ${primaryGenre} genre!`);
   };
 
   const updateStatus = async (movie: Movie, status: Movie['status']) => {
@@ -652,7 +652,7 @@ const App = () => {
                 }
             },
             config: { 
-                // Fix typo: responseModalalities instead of responseModalities
+                // Fix typo from responseModalalities to responseModalities
                 responseModalities: [Modality.AUDIO],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
                 inputAudioTranscription: {},
