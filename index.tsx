@@ -229,10 +229,10 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
       {isOpen && (
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 animate-in slide-in-from-top-2 duration-300">
           {movies.map(m => {
-            const isMenuId = m.tmdb_id;
+            const isMenuId = Number(m.tmdb_id);
             const isMenuOpen = activeMenuId === isMenuId;
             return (
-              <div key={isMenuId} className={`group relative aspect-[2/3] transition-all duration-300 ${isMenuOpen ? 'z-50' : 'z-0 hover:z-20'}`}>
+              <div key={`movie-${isMenuId}`} className={`group relative aspect-[2/3] transition-all duration-300 ${isMenuOpen ? 'z-50' : 'z-0 hover:z-20'}`}>
                 <div 
                   onClick={() => onMovieClick(m)}
                   className={`absolute inset-0 rounded-2xl overflow-hidden ring-1 ${theme === 'dark' ? 'ring-white/5 bg-zinc-900' : 'ring-zinc-200 bg-zinc-100'} group-hover:ring-indigo-500/50 transition-all shadow-xl cursor-pointer`}
@@ -388,7 +388,7 @@ const App = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(toastContent => toastContent);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -426,29 +426,26 @@ const App = () => {
   useEffect(() => {
     const loadAllData = async () => {
       let localMovies: Movie[] = [];
-      const saved = localStorage.getItem('sam_movies');
-      if (saved) {
-        try {
+      try {
+        const saved = localStorage.getItem('sam_movies');
+        if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) localMovies = parsed;
-        } catch (e) { console.error(e); }
-      }
+        }
+      } catch (e) {}
 
-      let loadedMovies = localMovies;
-
+      let cloudMovies: Movie[] = [];
       if (supabase) {
         try {
-          const { data, error } = await supabase.from('movie').select('*').order('added_at', { ascending: false });
-          if (!error && data) {
-            loadedMovies = data;
-          }
-        } catch (e) { console.error("Cloud load error:", e); }
+          const { data, error } = await supabase.from('movie').select('*');
+          if (!error && data) cloudMovies = data;
+        } catch (e) {}
       }
       
+      // CRITICAL: Merge Local and Cloud to prevent deletion
       const uniqueMap = new Map();
-      loadedMovies.forEach(m => {
-        if (m.tmdb_id) uniqueMap.set(Number(m.tmdb_id), m);
-      });
+      localMovies.forEach(m => uniqueMap.set(Number(m.tmdb_id), m));
+      cloudMovies.forEach(m => uniqueMap.set(Number(m.tmdb_id), m));
       
       setMovies(Array.from(uniqueMap.values()));
       setHasLoaded(true);
@@ -467,52 +464,49 @@ const App = () => {
     return movies.find(m => Number(m.tmdb_id) === Number(tmdb_id)) || null;
   };
 
-  // Improved updateStatus to handle data correctly from both search and vault
   const updateStatus = async (movieData: any, status: Movie['status']) => {
     const tmdbId = Number(movieData.tmdb_id || movieData.id);
-    let fullMovie: Movie;
+    if (!tmdbId) return;
 
+    let fullMovie: Movie;
     const existing = getSavedMovie(tmdbId);
+
     if (existing) {
       fullMovie = { ...existing, status };
     } else {
-      // If movieData already has full fields (like description), use it!
-      if (movieData.description && movieData.tmdb_id) {
-        fullMovie = { ...movieData, status, added_at: new Date().toISOString() };
+      // FIX: Check if movieData already contains full metadata to prevent "Untitled" error
+      if (movieData.title && movieData.description) {
+        fullMovie = { ...movieData, status, added_at: new Date().toISOString(), tmdb_id: tmdbId };
       } else {
-        // Otherwise, fetch it properly using the ID
         const details = await fetchMovieDetails(movieData);
         fullMovie = { ...details, status };
       }
     }
 
-    // Prevents "Untitled" bug by ensuring we have valid fallback values
     const finalTitle = fullMovie.title || "Unknown Title";
     const primaryGenre = (fullMovie.genre || 'Movies').split(',')[0].trim();
 
     setMovies(prev => {
-      const idx = prev.findIndex(m => Number(m.tmdb_id) === tmdbId);
-      if (idx !== -1) {
-        const updated = [...prev];
-        updated[idx] = fullMovie;
-        return updated;
-      }
-      return [fullMovie, ...prev];
+      // Optimized filter/replace
+      const newList = prev.filter(m => Number(m.tmdb_id) !== tmdbId);
+      return [{ ...fullMovie, status, tmdb_id: tmdbId }, ...newList];
     });
 
     setToast(existing ? `Moved to ${status.toUpperCase()}` : `${finalTitle} added to ${primaryGenre}!`);
     
     if (selectedMovie && Number(selectedMovie.tmdb_id) === tmdbId) {
-      setSelectedMovie(fullMovie);
+      setSelectedMovie({ ...fullMovie, status });
     }
 
     if (supabase) {
       try {
         const { data } = await supabase.from('movie').select('id').eq('tmdb_id', tmdbId).maybeSingle();
+        // STRIP internal id before insert/update
+        const { id, ...cleanMovie } = fullMovie as any;
         if (data) {
           await supabase.from('movie').update({ status }).eq('id', data.id);
         } else {
-          await supabase.from('movie').insert([fullMovie]);
+          await supabase.from('movie').insert([{ ...cleanMovie, status, tmdb_id: tmdbId }]);
         }
       } catch (e) { console.error("Cloud sync error:", e); }
     }
@@ -532,24 +526,22 @@ const App = () => {
     setToast(`Genre: ${newGenre}`);
   };
 
-  // Fixed: Guaranteed delete functionality
   const handleDelete = async (movie: Movie) => {
     const tmdbId = Number(movie.tmdb_id);
     if (!tmdbId) return;
 
-    // 1. Optimistic local state update (IMMEDIATE)
-    setMovies(prev => {
-      const newList = prev.filter(m => Number(m.tmdb_id) !== tmdbId);
-      return newList;
-    });
+    // LOCAL REMOVE (Immediate)
+    setMovies(prev => prev.filter(m => Number(m.tmdb_id) !== tmdbId));
     
-    // 2. Clear UI references
-    setSelectedMovie(null);
+    if (selectedMovie && Number(selectedMovie.tmdb_id) === tmdbId) {
+      setSelectedMovie(null);
+    }
     setToast("Removed from collection");
 
-    // 3. Background Sync
+    // CLOUD REMOVE
     if (supabase) {
       try {
+        // Strict ID match for cloud delete
         await supabase.from('movie').delete().eq('tmdb_id', tmdbId);
       } catch (e) { 
         console.error("Cloud delete sync error:", e); 
@@ -789,7 +781,6 @@ const App = () => {
     finally { setIsAiThinking(false); }
   };
 
-  // Helper to ensure the DetailModal always reflects the latest state from the collection
   const displayedMovie = useMemo(() => {
     if (!selectedMovie) return null;
     const saved = getSavedMovie(selectedMovie.tmdb_id);
@@ -834,7 +825,7 @@ const App = () => {
              </div>
              <div className="space-y-14">
                 {groupedMovies.length > 0 ? groupedMovies.map(([genre, list]) => (
-                    <GenreGroup key={genre} genre={genre} movies={list} theme={theme} existingGenres={uniqueGenres} onMovieClick={setSelectedMovie} onUpdateStatus={updateStatus} onUpdateGenre={updateGenre} onDelete={handleDelete} />
+                    <GenreGroup key={`genre-${genre}`} genre={genre} movies={list} theme={theme} existingGenres={uniqueGenres} onMovieClick={setSelectedMovie} onUpdateStatus={updateStatus} onUpdateGenre={updateGenre} onDelete={handleDelete} />
                   )) : (
                   <div className="py-40 text-center space-y-4 opacity-50">
                      <div className={`w-16 h-16 ${theme === 'dark' ? 'bg-white/5' : 'bg-zinc-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
@@ -859,7 +850,7 @@ const App = () => {
              </div>
              <div className="grid grid-cols-1 gap-5">
                 {searchResults.map(item => (
-                  <div key={item.id} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-5 rounded-[32px] border flex gap-8 items-center group hover:border-indigo-500/40 transition-all shadow-2xl`}>
+                  <div key={`search-${item.id}`} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-5 rounded-[32px] border flex gap-8 items-center group hover:border-indigo-500/40 transition-all shadow-2xl`}>
                     <div className="w-20 h-28 rounded-2xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg cursor-pointer" onClick={() => handlePreviewMovie(item)}>
                        <img src={item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : 'https://via.placeholder.com/200x300'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
                     </div>
@@ -894,12 +885,12 @@ const App = () => {
                    </div>
                 )}
                 {aiHistory.map((m, i) => (
-                  <div key={i} className={`flex flex-col gap-5 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div key={`ai-${i}`} className={`flex flex-col gap-5 ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`p-6 rounded-[32px] max-w-[85%] text-sm font-semibold shadow-lg ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : `${theme === 'dark' ? 'bg-white/5 text-zinc-300' : 'bg-zinc-100 text-slate-700'} rounded-tl-none`}`}>{m.content}</div>
                     {m.results && (
                       <div className="flex gap-5 overflow-x-auto w-full no-scrollbar py-2">
                         {m.results.map((r: any) => (
-                          <div key={r.id} className={`${theme === 'dark' ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200'} min-w-[200px] rounded-[32px] overflow-hidden group border transition-all hover:-translate-y-2 hover:border-indigo-500/50 shadow-md`}>
+                          <div key={`ai-result-${r.id}`} className={`${theme === 'dark' ? 'bg-zinc-900 border-white/5' : 'bg-white border-zinc-200'} min-w-[200px] rounded-[32px] overflow-hidden group border transition-all hover:-translate-y-2 hover:border-indigo-500/50 shadow-md`}>
                              <img src={r.poster_path ? `https://image.tmdb.org/t/p/w200${r.poster_path}` : 'https://via.placeholder.com/200x300'} className="aspect-[2/3] object-cover group-hover:scale-110 transition-transform duration-700 cursor-pointer" alt="poster" onClick={() => handlePreviewMovie(r)} />
                              <div className="p-4 space-y-2">
                                 <h5 className={`text-[10px] font-black uppercase truncate tracking-wider ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>{r.title || r.name}</h5>
