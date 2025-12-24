@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import { GoogleGenAI, Type, Modality, LiveServerMessage } from "@google/genai";
+import { GoogleGenAI, Type, LiveServerMessage, Modality } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 
 // --- Config ---
@@ -40,26 +40,54 @@ interface Movie {
 type Theme = 'dark' | 'light';
 
 // --- Utils ---
+function encode(bytes: Uint8Array) {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+  return bytes;
+}
+
+async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
 const encodePCM = (data: Float32Array) => {
   const int16 = new Int16Array(data.length);
-  for (let i = 0; i < data.length; i++) int16[i] = data[i] * 32768;
-  let binary = '';
-  const bytes = new Uint8Array(int16.buffer);
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
+  for (let i = 0; i < data.length; i++) {
+    const s = Math.max(-1, Math.min(1, data[i]));
+    int16[i] = Math.floor(s < 0 ? s * 32768 : s * 32767);
+  }
+  return encode(new Uint8Array(int16.buffer));
 };
 
 // --- Components ---
 
 const Toast = ({ message, onClose }: { message: string, onClose: () => void }) => {
   useEffect(() => {
-    const timer = setTimeout(onClose, 3000);
+    const timer = setTimeout(onClose, 4000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
   return (
-    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] bg-indigo-600 text-white px-6 py-3 rounded-2xl shadow-2xl font-bold animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-3">
-       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] bg-indigo-600 text-white px-6 py-3 rounded-2xl shadow-2xl font-bold animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-3 border border-white/20">
+       <div className="w-2 h-2 rounded-full bg-white animate-pulse"></div>
        {message}
     </div>
   );
@@ -84,7 +112,6 @@ const MovieActionMenu = ({
 }) => {
   const [view, setView] = useState<'main' | 'category' | 'genre'>('main');
   const [customGenre, setCustomGenre] = useState('');
-
   const glassClass = theme === 'dark' ? 'glass-dark' : 'glass-light';
 
   return (
@@ -241,6 +268,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
                   <MovieActionMenu 
                     movie={m}
                     theme={theme}
+                    // Fix: Use the local prop existingGenres instead of uniqueGenres which is defined in App
                     existingGenres={existingGenres}
                     onUpdateStatus={(s) => { onUpdateStatus(m, s); setActiveMenuId(null); }}
                     onUpdateGenre={(g) => { onUpdateGenre(m, g); setActiveMenuId(null); }}
@@ -285,7 +313,7 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <h2 className={`text-3xl sm:text-4xl font-black leading-tight tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{movie.title}</h2>
-              {!isSaved && <span className="bg-indigo-600/20 text-indigo-400 text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest border border-indigo-600/30">Preview</span>}
+              {!isSaved && <div className="bg-indigo-600/20 text-indigo-400 text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest border border-indigo-600/30">Preview</div>}
             </div>
             <div className="flex items-center gap-3">
               <span className="text-yellow-500 font-black text-sm">★ {movie.rating?.toFixed(1)}</span>
@@ -301,13 +329,12 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
               { id: 'watched', label: 'Watched', color: 'emerald' },
               { id: 'favorite', label: 'Favorite', color: 'rose' }
             ].map(btn => {
-              // ONLY active if movie is saved AND status matches
               const isActive = isSaved && movie.status === btn.id;
               return (
                 <button 
                   key={btn.id}
                   onClick={() => onUpdateStatus(btn.id as any)}
-                  className={`flex-1 min-w-[120px] px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${isActive ? `bg-${btn.color}-600 border-transparent text-white shadow-xl scale-[1.02]` : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-zinc-500 hover:bg-white/10 hover:border-indigo-600/30' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:bg-zinc-200 hover:border-indigo-600/30'} hover:text-indigo-600`}`}
+                  className={`flex-1 min-w-[120px] px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border ${isActive ? `bg-${btn.color}-600 border-transparent text-white shadow-xl scale-[1.02]` : `${theme === 'dark' ? 'bg-white/5 border-white/10 text-zinc-500 hover:bg-white/10' : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:bg-zinc-200'} hover:text-indigo-600 hover:border-indigo-600/30`}`}
                 >
                   {btn.label}
                 </button>
@@ -372,13 +399,17 @@ const App = () => {
   
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const activeTabRef = useRef(activeTab);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const outAudioCtxRef = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const nextStartTimeRef = useRef(0);
 
   const isSupabaseActive = !!supabase;
 
-  // Sync tab ref for session callbacks
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
-  // --- Persistence ---
   useEffect(() => {
     localStorage.setItem('sam_theme', theme);
     document.body.className = theme === 'dark' ? 'bg-[#050505] text-zinc-100 overflow-x-hidden' : 'bg-[#f8fafc] text-slate-900 overflow-x-hidden';
@@ -412,9 +443,18 @@ const App = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
+  const isMovieSaved = (tmdb_id?: number) => {
+    if (!tmdb_id) return false;
+    return movies.some(m => Number(m.tmdb_id) === Number(tmdb_id));
+  };
+
+  const getSavedMovie = (tmdb_id?: number) => {
+    if (!tmdb_id) return null;
+    return movies.find(m => Number(m.tmdb_id) === Number(tmdb_id)) || null;
+  };
+
   const saveMovie = async (movie: Movie) => {
-    const existing = movies.find(m => m.tmdb_id === movie.tmdb_id);
-    if (existing) {
+    if (isMovieSaved(movie.tmdb_id)) {
       setToast("Already in your collection!");
       return;
     }
@@ -433,50 +473,54 @@ const App = () => {
     localStorage.setItem('sam_movies', JSON.stringify(updated));
     
     const primaryGenre = movie.genre.split(',')[0].trim().toUpperCase();
-    setToast(`${movie.title} added to ${primaryGenre} genre!`);
+    setToast(`${movie.title} added to ${primaryGenre}!`);
     
-    // Update local preview state if open
-    if (selectedMovie && selectedMovie.tmdb_id === movie.tmdb_id) {
+    if (selectedMovie && Number(selectedMovie.tmdb_id) === Number(movie.tmdb_id)) {
         setSelectedMovie(finalMovie);
     }
   };
 
   const updateStatus = async (movie: Movie, status: Movie['status']) => {
-    // If it's not saved yet (no matter if ID exists, if it's not in movies array), save it
-    const isSavedAlready = movies.some(m => m.tmdb_id === movie.tmdb_id);
-    if (!isSavedAlready) {
+    const saved = getSavedMovie(movie.tmdb_id);
+    if (!saved) {
         await saveMovie({ ...movie, status });
         return;
     }
 
-    const updatedMovie = { ...movie, status };
-    if (supabase && movie.id) {
-      await supabase.from('movie').update({ status }).eq('id', movie.id);
+    const updatedMovie = { ...saved, status };
+    if (supabase && saved.id) {
+      await supabase.from('movie').update({ status }).eq('id', saved.id);
     }
-    const updated = movies.map(m => (m.id || m.tmdb_id) === (movie.id || movie.tmdb_id) ? updatedMovie : m);
+    const updated = movies.map(m => Number(m.tmdb_id) === Number(movie.tmdb_id) ? updatedMovie : m);
     setMovies(updated);
     localStorage.setItem('sam_movies', JSON.stringify(updated));
     setToast(`Moved to ${status.toUpperCase()}`);
     
-    if (selectedMovie && selectedMovie.tmdb_id === movie.tmdb_id) {
+    if (selectedMovie && Number(selectedMovie.tmdb_id) === Number(movie.tmdb_id)) {
         setSelectedMovie(updatedMovie);
     }
   };
 
   const updateGenre = async (movie: Movie, newGenre: string) => {
-    const updatedMovie = { ...movie, genre: newGenre };
-    if (supabase && movie.id) {
-      await supabase.from('movie').update({ genre: newGenre }).eq('id', movie.id);
+    const saved = getSavedMovie(movie.tmdb_id);
+    if (!saved) return;
+
+    const updatedMovie = { ...saved, genre: newGenre };
+    if (supabase && saved.id) {
+      await supabase.from('movie').update({ genre: newGenre }).eq('id', saved.id);
     }
-    const updated = movies.map(m => (m.id || m.tmdb_id) === (movie.id || movie.tmdb_id) ? updatedMovie : m);
+    const updated = movies.map(m => Number(m.tmdb_id) === Number(movie.tmdb_id) ? updatedMovie : m);
     setMovies(updated);
     localStorage.setItem('sam_movies', JSON.stringify(updated));
     setToast(`Genre: ${newGenre}`);
   };
 
   const handleDelete = async (movie: Movie) => {
-    if (supabase && movie.id) await supabase.from('movie').delete().eq('id', movie.id);
-    const updated = movies.filter(m => (m.id || m.tmdb_id) !== (movie.id || movie.tmdb_id));
+    const saved = getSavedMovie(movie.tmdb_id);
+    if (!saved) return;
+
+    if (supabase && saved.id) await supabase.from('movie').delete().eq('id', saved.id);
+    const updated = movies.filter(m => Number(m.tmdb_id) !== Number(movie.tmdb_id));
     setMovies(updated);
     localStorage.setItem('sam_movies', JSON.stringify(updated));
     setSelectedMovie(null);
@@ -486,9 +530,29 @@ const App = () => {
   const stopVoiceSearch = () => {
     if (sessionPromiseRef.current) {
         sessionPromiseRef.current.then(session => {
-            try { session.close(); } catch (e) {}
-        });
+            if (session) try { session.close(); } catch (e) {}
+        }).catch(() => {});
         sessionPromiseRef.current = null;
+    }
+    if (audioProcessorRef.current) {
+      try { audioProcessorRef.current.disconnect(); } catch (e) {}
+      audioProcessorRef.current = null;
+    }
+    if (audioSourceRef.current) {
+      try { audioSourceRef.current.disconnect(); } catch (e) {}
+      audioSourceRef.current = null;
+    }
+    if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop());
+        audioStreamRef.current = null;
+    }
+    if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+    }
+    if (outAudioCtxRef.current) {
+      outAudioCtxRef.current.close().catch(() => {});
+      outAudioCtxRef.current = null;
     }
     setIsVoiceActive(false);
   };
@@ -504,57 +568,111 @@ const App = () => {
     
     try {
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const outAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        audioCtxRef.current = audioCtx;
+        outAudioCtxRef.current = outAudioCtx;
+        nextStartTimeRef.current = 0;
         
-        sessionPromiseRef.current = ai.live.connect({
+        await audioCtx.resume();
+        await outAudioCtx.resume();
+        
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioStreamRef.current = stream;
+        
+        const sessionPromise = ai.live.connect({
             model: MODELS.LIVE,
             callbacks: {
                 onopen: () => {
-                    const source = audioCtx.createMediaStreamSource(stream);
-                    const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+                    if (!audioCtxRef.current || !audioStreamRef.current) return;
+                    
+                    const source = audioCtxRef.current.createMediaStreamSource(audioStreamRef.current);
+                    audioSourceRef.current = source;
+                    
+                    const processor = audioCtxRef.current.createScriptProcessor(4096, 1, 1);
+                    audioProcessorRef.current = processor;
+                    
                     processor.onaudioprocess = (e) => {
-                        const data = e.inputBuffer.getChannelData(0);
-                        if (sessionPromiseRef.current) {
-                            sessionPromiseRef.current.then(session => {
-                              session.sendRealtimeInput({ media: { data: encodePCM(data), mimeType: 'audio/pcm;rate=16000' } });
-                            });
+                        try {
+                          const data = e.inputBuffer.getChannelData(0);
+                          const pcmBase64 = encodePCM(data);
+                          
+                          sessionPromise.then(session => {
+                              if (session) {
+                                session.sendRealtimeInput({ 
+                                  media: { data: pcmBase64, mimeType: 'audio/pcm;rate=16000' } 
+                                });
+                              }
+                          }).catch(() => {});
+                        } catch (err) {
+                          console.error("PCM stream error:", err);
                         }
                     };
-                    source.connect(processor); processor.connect(audioCtx.destination);
+                    
+                    source.connect(processor);
+                    processor.connect(audioCtxRef.current.destination);
                 },
                 onmessage: async (msg: LiveServerMessage) => {
+                    const parts = msg.serverContent?.modelTurn?.parts;
+                    const audioPart = parts?.find(p => p.inlineData);
+                    const base64Audio = audioPart?.inlineData?.data;
+
+                    if (base64Audio && outAudioCtxRef.current) {
+                      const audioBuffer = await decodeAudioData(decode(base64Audio), outAudioCtxRef.current, 24000, 1);
+                      const source = outAudioCtxRef.current.createBufferSource();
+                      source.buffer = audioBuffer;
+                      source.connect(outAudioCtxRef.current.destination);
+                      nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outAudioCtxRef.current.currentTime);
+                      source.start(nextStartTimeRef.current);
+                      nextStartTimeRef.current += audioBuffer.duration;
+                    }
+
                     if (msg.serverContent?.inputTranscription) {
                         const text = msg.serverContent.inputTranscription.text;
                         if (text) {
                             if (activeTabRef.current === 'discover') {
                                 setSearchQuery(prev => {
-                                    const next = prev + " " + text;
-                                    handleSearch(next.trim());
-                                    return next.trim();
+                                    const next = (prev + " " + text).trim();
+                                    handleSearch(next);
+                                    return next;
                                 });
                             } else if (activeTabRef.current === 'ai') {
                                 setAiInput(prev => (prev + " " + text).trim());
                             }
                         }
                     }
-                    if (msg.serverContent?.turnComplete) { }
                 },
-                onclose: () => setIsVoiceActive(false),
-                onerror: () => setIsVoiceActive(false)
+                onclose: (e) => {
+                  console.debug("Session closed:", e);
+                  setIsVoiceActive(false);
+                },
+                onerror: (err: any) => { 
+                  console.error("Live Voice Error:", err); 
+                  setToast(`Voice API Error: ${err?.message || "Connection failed"}`);
+                  stopVoiceSearch(); 
+                }
             },
             config: { 
-                responseModalalities: [Modality.AUDIO],
-                inputAudioTranscription: {}
+                responseModalities: [Modality.AUDIO],
+                speechConfig: {
+                  voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
+                },
+                inputAudioTranscription: {},
+                outputAudioTranscription: {},
+                systemInstruction: "You are a movie vault assistant. Do not speak unless spoken to. Quietly transcribe the user's movie titles, genres, or actor names accurately. If they just say a name, transcribe exactly that."
             }
         });
-    } catch (err) {
-        console.error("Voice start error:", err);
+        
+        sessionPromiseRef.current = sessionPromise;
+
+    } catch (err: any) {
+        console.error("Voice Startup Failure:", err);
+        setToast(`Microphone Access Error: ${err?.message || "Permission denied"}`);
         setIsVoiceActive(false);
     }
   };
 
   const handleSearch = async (query: string) => {
-    if (!query) return;
+    if (!query || query.length < 2) return;
     setIsSearching(true);
     try {
       const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}`);
@@ -567,7 +685,7 @@ const App = () => {
   };
 
   const fetchMovieDetails = async (item: any) => {
-    const res = await fetch(`https://api.themoviedb.org/3/${item.media_type || 'movie'}/${item.id}?api_key=${TMDB_API_KEY}&append_to_response=credits,videos`);
+    const res = await fetch(`https://api.themoviedb.org/3/${item.media_type || 'movie'}/${item.id || item.tmdb_id}?api_key=${TMDB_API_KEY}&append_to_response=credits,videos`);
     const d = await res.json();
     const trailer = d.videos?.results?.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube');
     
@@ -592,14 +710,11 @@ const App = () => {
   };
 
   const handlePreviewMovie = async (item: any) => {
-    // Check if already in vault
-    const existing = movies.find(m => m.tmdb_id === item.id || m.tmdb_id === item.tmdb_id);
-    if (existing) {
-        setSelectedMovie(existing);
+    const saved = getSavedMovie(item.id || item.tmdb_id);
+    if (saved) {
+        setSelectedMovie(saved);
         return;
     }
-
-    // Otherwise fetch preview data
     const details = await fetchMovieDetails(item);
     setSelectedMovie(details);
   };
@@ -673,9 +788,14 @@ const App = () => {
         : `${theme === 'dark' ? 'text-zinc-500 hover:text-white' : 'text-zinc-400 hover:text-indigo-600'}`
     }`;
 
+  const displayedModalMovie = useMemo(() => {
+    if (!selectedMovie) return null;
+    const saved = getSavedMovie(selectedMovie.tmdb_id);
+    return saved ? { ...selectedMovie, ...saved } : selectedMovie;
+  }, [selectedMovie, movies]);
+
   const isSelectedSaved = useMemo(() => {
-    if (!selectedMovie) return false;
-    return movies.some(m => m.tmdb_id === selectedMovie.tmdb_id);
+    return isMovieSaved(selectedMovie?.tmdb_id);
   }, [selectedMovie, movies]);
 
   return (
@@ -773,7 +893,7 @@ const App = () => {
                   className={`w-full ${theme === 'dark' ? 'bg-zinc-900 border-white/10 text-white' : 'bg-white border-zinc-200 text-slate-800 shadow-lg'} border rounded-[32px] px-8 py-6 focus:ring-4 focus:ring-indigo-600/20 outline-none transition-all placeholder:text-zinc-400 text-xl font-medium`}
                   placeholder="Summon your next movie..."
                   value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) handleSearch(e.target.value); }}
+                  onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 1) handleSearch(e.target.value); }}
                 />
                 <div className="absolute right-5 top-1/2 -translate-y-1/2 flex gap-4">
                   <button onClick={handleVoiceSearch} className={`p-3 rounded-2xl transition-all ${isVoiceActive ? 'bg-yellow-500 text-black voice-active shadow-xl' : `${theme === 'dark' ? 'bg-white/5 text-zinc-500' : 'bg-zinc-100 text-zinc-400 hover:text-indigo-600'}`}`}>
@@ -904,14 +1024,14 @@ const App = () => {
       </nav>
 
       {/* Overlays */}
-      {selectedMovie && (
+      {displayedModalMovie && (
         <DetailModal 
-          movie={selectedMovie} 
+          movie={displayedModalMovie} 
           theme={theme}
           isSaved={isSelectedSaved}
           onClose={() => setSelectedMovie(null)} 
-          onUpdateStatus={(s) => updateStatus(selectedMovie, s)}
-          onDelete={() => handleDelete(selectedMovie)}
+          onUpdateStatus={(s) => updateStatus(displayedModalMovie, s)}
+          onDelete={() => handleDelete(displayedModalMovie)}
         />
       )}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
