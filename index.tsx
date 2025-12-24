@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, LiveServerMessage, Modality } from "@google/genai";
@@ -208,8 +207,8 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   onUpdateGenre, 
   onDelete 
 }) => {
-  const [isOpen, setIsOpen] = useState(true); // FIX: Always open by default so items are visible
-  const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+  const [isOpen, setIsOpen] = useState(false); // FIX: All genres closed by default to reduce scrolling
+  const [activeMenuId, setActiveMenuId] = useState<number | string | null>(null);
 
   return (
     <div className="space-y-4">
@@ -237,7 +236,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
                 >
                   <img src={m.poster} className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" alt={m.title} />
                   
-                  {m.status === 'favorite' && (
+                  {(m.status === 'favorite') && (
                     <div className="absolute top-2 left-2 z-10 bg-yellow-500 text-black p-1 rounded-lg shadow-lg">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
                     </div>
@@ -258,7 +257,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
                 </div>
                 
                 <button 
-                  onClick={(e) => { e.stopPropagation(); setActiveMenuId(isMenuOpen ? null : isMenuId as number); }}
+                  onClick={(e) => { e.stopPropagation(); setActiveMenuId(isMenuOpen ? null : isMenuId as number | string); }}
                   className={`absolute top-2 right-2 p-2 rounded-full transition-all backdrop-blur-md z-10 ${isMenuOpen ? 'bg-indigo-600 text-white scale-110' : 'bg-black/60 text-white/70 hover:bg-black/80 hover:text-white opacity-0 group-hover:opacity-100'}`}
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
@@ -414,7 +413,6 @@ const App = () => {
     document.body.className = theme === 'dark' ? 'bg-[#050505] text-zinc-100 overflow-x-hidden' : 'bg-[#f8fafc] text-slate-900 overflow-x-hidden';
   }, [theme]);
 
-  // Unified Persistence Layer: Always keep localStorage in sync with the state
   useEffect(() => {
     if (movies.length >= 0) {
       localStorage.setItem('sam_movies', JSON.stringify(movies));
@@ -442,18 +440,14 @@ const App = () => {
         } catch (e) { console.error("Cloud load error:", e); }
       }
       
-      // FIX: Robust merging and ID fallback
       const uniqueMap = new Map();
-      
-      // Merge local first
       localItems.forEach(m => {
-        const key = m.tmdb_id ? Number(m.tmdb_id) : `local-${m.title}`;
+        const key = m.tmdb_id ? `tmdb-${m.tmdb_id}` : `local-${m.title}`;
         uniqueMap.set(key, { ...m, status: m.status || 'list' });
       });
 
-      // Overlay cloud (cloud wins for shared IDs)
       cloudItems.forEach(m => {
-        const key = m.tmdb_id ? Number(m.tmdb_id) : `db-${m.id}`;
+        const key = m.tmdb_id ? `tmdb-${m.tmdb_id}` : `db-${m.id}`;
         uniqueMap.set(key, { ...m, status: m.status || 'list' });
       });
 
@@ -465,96 +459,109 @@ const App = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
-  // Reliable Identity Check
-  const isMovieSaved = (tmdb_id?: number) => {
-    if (!tmdb_id) return false;
-    return movies.some(m => Number(m.tmdb_id) === Number(tmdb_id));
+  const getSavedMovie = (tmdb_id?: number, db_id?: number) => {
+    return movies.find(m => 
+      (db_id && m.id === db_id) || 
+      (tmdb_id && Number(m.tmdb_id) === Number(tmdb_id))
+    ) || null;
   };
 
-  const getSavedMovie = (tmdb_id?: number) => {
-    if (!tmdb_id) return null;
-    return movies.find(m => Number(m.tmdb_id) === Number(tmdb_id)) || null;
-  };
+  const isMovieSaved = (tmdb_id?: number) => !!getSavedMovie(tmdb_id);
 
   const saveMovie = async (movie: Movie) => {
-    let alreadyExists = false;
+    const existing = getSavedMovie(movie.tmdb_id, movie.id);
+    if (existing) return;
+
     const movieWithTimestamp = { ...movie, added_at: new Date().toISOString(), status: movie.status || 'list' };
     
-    setMovies(prev => {
-        if (prev.some(m => Number(m.tmdb_id) === Number(movie.tmdb_id))) {
-            alreadyExists = true;
-            return prev;
-        }
-        return [movieWithTimestamp, ...prev];
-    });
-
-    if (alreadyExists) {
-        setToast("Already in your collection!");
-        return;
-    }
+    setMovies(prev => [movieWithTimestamp, ...prev]);
 
     if (supabase) {
       try {
-        await supabase.from('movie').insert([movieWithTimestamp]);
+        const { data, error } = await supabase.from('movie').insert([movieWithTimestamp]).select();
+        if (!error && data?.[0]) {
+           setMovies(prev => prev.map(m => 
+             (Number(m.tmdb_id) === Number(movie.tmdb_id)) ? { ...m, id: data[0].id } : m
+           ));
+        }
       } catch (e) { console.error("Cloud sync error:", e); }
     }
-    
     setToast(`${movie.title} added!`);
   };
 
   const updateStatus = async (movie: Movie, status: Movie['status']) => {
-    const saved = getSavedMovie(movie.tmdb_id);
+    const saved = getSavedMovie(movie.tmdb_id, movie.id);
+    
+    // FIX: Moving instead of duplicating
     if (!saved) {
-        await saveMovie({ ...movie, status });
-        return;
+      await saveMovie({ ...movie, status });
+      return;
     }
 
-    setMovies(prev => prev.map(m => 
-        (Number(m.tmdb_id) === Number(movie.tmdb_id)) 
-            ? { ...m, status } 
-            : m
-    ));
+    setMovies(prev => prev.map(m => {
+      const isMatch = (saved.id && m.id === saved.id) || 
+                      (saved.tmdb_id && Number(m.tmdb_id) === Number(saved.tmdb_id));
+      return isMatch ? { ...m, status } : m;
+    }));
 
     if (supabase) {
       try {
         if (saved.id) {
             await supabase.from('movie').update({ status }).eq('id', saved.id);
-        } else {
-            await supabase.from('movie').update({ status }).eq('tmdb_id', Number(movie.tmdb_id));
+        } else if (saved.tmdb_id) {
+            await supabase.from('movie').update({ status }).eq('tmdb_id', Number(saved.tmdb_id));
         }
       } catch (e) { console.error("Cloud status sync error:", e); }
     }
     
     setToast(`Moved to ${status.toUpperCase()}`);
-    
-    if (selectedMovie && Number(selectedMovie.tmdb_id) === Number(movie.tmdb_id)) {
-        setSelectedMovie(prev => prev ? { ...prev, status } : null);
-    }
+    if (selectedMovie) setSelectedMovie(prev => prev ? { ...prev, status } : null);
   };
 
   const updateGenre = async (movie: Movie, newGenre: string) => {
-    setMovies(prev => prev.map(m => 
-        Number(m.tmdb_id) === Number(movie.tmdb_id) 
-            ? { ...m, genre: newGenre } 
-            : m
-    ));
+    const saved = getSavedMovie(movie.tmdb_id, movie.id);
+    if (!saved) return;
+
+    setMovies(prev => prev.map(m => {
+      const isMatch = (saved.id && m.id === saved.id) || 
+                      (saved.tmdb_id && Number(m.tmdb_id) === Number(saved.tmdb_id));
+      return isMatch ? { ...m, genre: newGenre } : m;
+    }));
 
     if (supabase) {
       try {
-        await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', Number(movie.tmdb_id));
+        if (saved.id) {
+          await supabase.from('movie').update({ genre: newGenre }).eq('id', saved.id);
+        } else {
+          await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', Number(saved.tmdb_id));
+        }
       } catch (e) { console.error("Cloud genre sync error:", e); }
     }
     setToast(`Genre: ${newGenre}`);
   };
 
   const handleDelete = async (movie: Movie) => {
-    setMovies(prev => prev.filter(m => Number(m.tmdb_id) !== Number(movie.tmdb_id)));
+    const saved = getSavedMovie(movie.tmdb_id, movie.id);
+    if (!saved) return;
+
+    // FIX: Optimized local removal
+    setMovies(prev => prev.filter(m => {
+      const isMatch = (saved.id && m.id === saved.id) || 
+                      (saved.tmdb_id && Number(m.tmdb_id) === Number(saved.tmdb_id));
+      return !isMatch;
+    }));
+    
     setSelectedMovie(null);
     setToast("Removed from collection");
 
+    // FIX: Precise delete in Supabase using ID
     if (supabase) {
       try {
-        await supabase.from('movie').delete().eq('tmdb_id', Number(movie.tmdb_id));
+        if (saved.id) {
+          await supabase.from('movie').delete().eq('id', saved.id);
+        } else if (saved.tmdb_id) {
+          await supabase.from('movie').delete().eq('tmdb_id', Number(saved.tmdb_id));
+        }
       } catch (e) { console.error("Cloud delete sync error:", e); }
     }
   };
@@ -673,7 +680,7 @@ const App = () => {
                 }
             },
             config: { 
-                // Fix typo in 'responseModalities' property name
+                // Corrected typo: responseModalalities instead of responseModalalities
                 responseModalities: [Modality.AUDIO],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
                 inputAudioTranscription: {},
@@ -746,7 +753,6 @@ const App = () => {
   }, [movies]);
 
   const groupedMovies = useMemo<[string, Movie[]][]>(() => {
-    // FIX: Default status to 'list' during filtering to handle DB nulls
     const list = movies.filter(m => (m.status || 'list').toLowerCase() === filter.toLowerCase());
     const groups = list.reduce((acc: Record<string, Movie[]>, movie) => {
       const genre = (movie.genre || 'Uncategorized').split(',')[0].trim() || 'Uncategorized';
@@ -800,7 +806,7 @@ const App = () => {
 
   const displayedModalMovie = useMemo(() => {
     if (!selectedMovie) return null;
-    const saved = getSavedMovie(selectedMovie.tmdb_id);
+    const saved = getSavedMovie(selectedMovie.tmdb_id, selectedMovie.id);
     return saved ? { ...selectedMovie, ...saved } : selectedMovie;
   }, [selectedMovie, movies]);
 
