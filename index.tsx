@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, LiveServerMessage, Modality } from "@google/genai";
@@ -389,6 +390,10 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Vault Search States
+  const [vaultSearch, setVaultSearch] = useState('');
+  const [vaultSuggestions, setVaultSuggestions] = useState<any[]>([]);
   
   const [aiInput, setAiInput] = useState('');
   const [aiHistory, setAiHistory] = useState<{ role: string, content: string, results?: any[] }[]>([]);
@@ -492,7 +497,6 @@ const App = () => {
   const updateStatus = async (movie: Movie, status: Movie['status']) => {
     const saved = getSavedMovie(movie.tmdb_id, movie.id);
     
-    // FIX: Moving instead of duplicating
     if (!saved) {
       await saveMovie({ ...movie, status });
       return;
@@ -544,7 +548,6 @@ const App = () => {
     const saved = getSavedMovie(movie.tmdb_id, movie.id);
     if (!saved) return;
 
-    // FIX: Optimized local removal
     setMovies(prev => prev.filter(m => {
       const isMatch = (saved.id && m.id === saved.id) || 
                       (saved.tmdb_id && Number(m.tmdb_id) === Number(saved.tmdb_id));
@@ -554,7 +557,6 @@ const App = () => {
     setSelectedMovie(null);
     setToast("Removed from collection");
 
-    // FIX: Precise delete in Supabase using ID
     if (supabase) {
       try {
         if (saved.id) {
@@ -564,36 +566,6 @@ const App = () => {
         }
       } catch (e) { console.error("Cloud delete sync error:", e); }
     }
-  };
-
-  const stopVoiceSearch = () => {
-    if (sessionPromiseRef.current) {
-        sessionPromiseRef.current.then(session => {
-            if (session) try { session.close(); } catch (e) {}
-        }).catch(() => {});
-        sessionPromiseRef.current = null;
-    }
-    if (audioProcessorRef.current) {
-      try { audioProcessorRef.current.disconnect(); } catch (e) {}
-      audioProcessorRef.current = null;
-    }
-    if (audioSourceRef.current) {
-      try { audioSourceRef.current.disconnect(); } catch (e) {}
-      audioSourceRef.current = null;
-    }
-    if (audioStreamRef.current) {
-        audioStreamRef.current.getTracks().forEach(track => track.stop());
-        audioStreamRef.current = null;
-    }
-    if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-    }
-    if (outAudioCtxRef.current) {
-      outAudioCtxRef.current.close().catch(() => {});
-      outAudioCtxRef.current = null;
-    }
-    setIsVoiceActive(false);
   };
 
   const handleVoiceSearch = async () => {
@@ -680,7 +652,7 @@ const App = () => {
                 }
             },
             config: { 
-                // Corrected typo: responseModalalities instead of responseModalalities
+                // Fix typo: responseModalalities instead of responseModalities
                 responseModalities: [Modality.AUDIO],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
                 inputAudioTranscription: {},
@@ -693,6 +665,36 @@ const App = () => {
         console.error("Voice Startup Failure:", err);
         setIsVoiceActive(false);
     }
+  };
+
+  const stopVoiceSearch = () => {
+    if (sessionPromiseRef.current) {
+        sessionPromiseRef.current.then(session => {
+            if (session) try { session.close(); } catch (e) {}
+        }).catch(() => {});
+        sessionPromiseRef.current = null;
+    }
+    if (audioProcessorRef.current) {
+      try { audioProcessorRef.current.disconnect(); } catch (e) {}
+      audioProcessorRef.current = null;
+    }
+    if (audioSourceRef.current) {
+      try { audioSourceRef.current.disconnect(); } catch (e) {}
+      audioSourceRef.current = null;
+    }
+    if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop());
+        audioStreamRef.current = null;
+    }
+    if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+    }
+    if (outAudioCtxRef.current) {
+      outAudioCtxRef.current.close().catch(() => {});
+      outAudioCtxRef.current = null;
+    }
+    setIsVoiceActive(false);
   };
 
   const handleSearch = async (query: string) => {
@@ -763,6 +765,33 @@ const App = () => {
     return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
   }, [movies, filter]);
 
+  // Vault Search Logic
+  const filteredVault = useMemo(() => {
+    if (!vaultSearch.trim()) return [];
+    return movies.filter(m => 
+      m.title.toLowerCase().includes(vaultSearch.toLowerCase())
+    );
+  }, [movies, vaultSearch]);
+
+  useEffect(() => {
+    if (vaultSearch.length > 2) {
+      const timer = setTimeout(async () => {
+        try {
+          const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(vaultSearch)}`);
+          const data = await res.json();
+          const items = (data.results || []).filter((r: any) => 
+            (r.media_type === 'movie' || r.media_type === 'tv') && 
+            !getSavedMovie(r.id)
+          );
+          setVaultSuggestions(items.slice(0, 5));
+        } catch (e) { console.error(e); }
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setVaultSuggestions([]);
+    }
+  }, [vaultSearch]);
+
   const askAi = async (prompt: string) => {
     if (!prompt.trim()) return;
     setIsAiThinking(true);
@@ -810,6 +839,16 @@ const App = () => {
     return saved ? { ...selectedMovie, ...saved } : selectedMovie;
   }, [selectedMovie, movies]);
 
+  const getStatusLabel = (status: Movie['status']) => {
+    const labels = {
+      list: 'To Watch',
+      watching: 'Watching',
+      watched: 'Watched',
+      favorite: 'Favorite'
+    };
+    return labels[status] || 'Unknown';
+  };
+
   return (
     <div className="min-h-screen pb-24 sm:pb-0 selection:bg-indigo-500/30 transition-colors duration-500">
       <nav className={`${navGlass} sticky top-0 z-50 px-6 py-5 flex items-center justify-between border-b ${theme === 'dark' ? 'border-white/5' : 'border-zinc-200'}`}>
@@ -838,23 +877,96 @@ const App = () => {
       <main className="max-w-6xl mx-auto p-6 sm:p-12">
         {activeTab === 'collection' && (
           <div className="space-y-10 animate-in fade-in duration-700">
-             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                {([['list', 'To Watch'], ['watching', 'Watching'], ['watched', 'Watched'], ['favorite', 'Favorite']] as const).map(([s, label]) => (
-                  <button key={s} onClick={() => setFilter(s)} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${filter === s ? 'bg-indigo-600 border-transparent text-white scale-105 shadow-2xl' : `${theme === 'dark' ? 'bg-white/5 border-white/5 text-zinc-500' : 'bg-white border-zinc-200 text-zinc-400 shadow-sm'}`}`}>{label}</button>
-                ))}
+             {/* Vault Search Bar */}
+             <div className="max-w-xl mx-auto w-full">
+                <div className={`relative flex items-center ${theme === 'dark' ? 'bg-white/5' : 'bg-white border border-zinc-200 shadow-sm'} rounded-3xl px-6 py-4 focus-within:ring-2 focus-within:ring-indigo-600/30 transition-all`}>
+                   <svg className={`w-5 h-5 ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} mr-4`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                   <input 
+                      className="bg-transparent border-none outline-none w-full text-base font-medium placeholder:text-zinc-500" 
+                      placeholder="Find a movie in your vault..." 
+                      value={vaultSearch}
+                      onChange={(e) => setVaultSearch(e.target.value)}
+                   />
+                   {vaultSearch && (
+                      <button onClick={() => setVaultSearch('')} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+                        <svg className="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                   )}
+                </div>
              </div>
-             <div className="space-y-14">
-                {groupedMovies.length > 0 ? groupedMovies.map(([genre, list]) => (
-                    <GenreGroup key={genre} genre={genre} movies={list} theme={theme} existingGenres={uniqueGenres} onMovieClick={setSelectedMovie} onUpdateStatus={updateStatus} onUpdateGenre={updateGenre} onDelete={handleDelete} />
-                  )) : (
-                  <div className="py-40 text-center space-y-4 opacity-50">
-                     <div className={`w-16 h-16 ${theme === 'dark' ? 'bg-white/5' : 'bg-zinc-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
-                        <svg className={`w-8 h-8 ${theme === 'dark' ? 'text-zinc-700' : 'text-zinc-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                     </div>
-                     <p className={`${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} font-bold italic`}>No items in your "{filter}" vault.</p>
+
+             {!vaultSearch ? (
+               <>
+                 <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                    {([['list', 'To Watch'], ['watching', 'Watching'], ['watched', 'Watched'], ['favorite', 'Favorite']] as const).map(([s, label]) => (
+                      <button key={s} onClick={() => setFilter(s)} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${filter === s ? 'bg-indigo-600 border-transparent text-white scale-105 shadow-2xl' : `${theme === 'dark' ? 'bg-white/5 border-white/5 text-zinc-500' : 'bg-white border-zinc-200 text-zinc-400 shadow-sm'}`}`}>{label}</button>
+                    ))}
+                 </div>
+                 <div className="space-y-14">
+                    {groupedMovies.length > 0 ? groupedMovies.map(([genre, list]) => (
+                        <GenreGroup key={genre} genre={genre} movies={list} theme={theme} existingGenres={uniqueGenres} onMovieClick={setSelectedMovie} onUpdateStatus={updateStatus} onUpdateGenre={updateGenre} onDelete={handleDelete} />
+                      )) : (
+                      <div className="py-40 text-center space-y-4 opacity-50">
+                         <div className={`w-16 h-16 ${theme === 'dark' ? 'bg-white/5' : 'bg-zinc-100'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                            <svg className={`w-8 h-8 ${theme === 'dark' ? 'text-zinc-700' : 'text-zinc-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                         </div>
+                         <p className={`${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} font-bold italic`}>No items in your "{filter}" vault.</p>
+                      </div>
+                    )}
+                 </div>
+               </>
+             ) : (
+               <div className="space-y-12 animate-in slide-in-from-top-4 duration-500">
+                  {/* Local Vault Results */}
+                  <div className="space-y-6">
+                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-indigo-500 pl-2">Local Results</h3>
+                    {filteredVault.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-4">
+                        {filteredVault.map(item => (
+                          <div key={item.id || item.tmdb_id} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-4 rounded-3xl border flex gap-6 items-center group hover:border-indigo-500/40 transition-all cursor-pointer`} onClick={() => handlePreviewMovie(item)}>
+                            <div className="w-16 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg">
+                               <img src={item.poster} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
+                            </div>
+                            <div className="flex-1">
+                               <h4 className={`font-black text-lg leading-tight tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title}</h4>
+                               <div className="flex gap-2 mt-2">
+                                  <span className="bg-indigo-600/20 text-indigo-400 text-[8px] font-black uppercase px-2 py-1 rounded-md tracking-tighter border border-indigo-600/20">Found in {getStatusLabel(item.status)}</span>
+                                  <span className={`${theme === 'dark' ? 'bg-white/5 text-zinc-500' : 'bg-zinc-100 text-zinc-400'} text-[8px] font-black uppercase px-2 py-1 rounded-md tracking-tighter`}>{item.genre.split(',')[0]}</span>
+                               </div>
+                            </div>
+                            <svg className="w-5 h-5 text-zinc-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-zinc-500 text-xs italic pl-2">No matching movies found in your vault.</p>
+                    )}
                   </div>
-                )}
-             </div>
+
+                  {/* External Suggestions */}
+                  {vaultSuggestions.length > 0 && (
+                    <div className="space-y-6 pt-6 border-t border-white/5">
+                      <h3 className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500 pl-2">Suggestions</h3>
+                      <div className="grid grid-cols-1 gap-4">
+                        {vaultSuggestions.map(item => (
+                          <div key={item.id} className={`${theme === 'dark' ? 'bg-white/5 border-white/5 hover:bg-white/10' : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100'} p-4 rounded-3xl border flex gap-6 items-center group transition-all`}>
+                            <div className="w-16 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg cursor-pointer" onClick={() => handlePreviewMovie(item)}>
+                               <img src={item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : 'https://via.placeholder.com/200x300'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
+                            </div>
+                            <div className="flex-1 cursor-pointer" onClick={() => handlePreviewMovie(item)}>
+                               <h4 className={`font-black text-lg leading-tight tracking-tight ${theme === 'dark' ? 'text-zinc-300' : 'text-slate-700'}`}>{item.title || item.name}</h4>
+                               <p className={`text-[9px] ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'} font-black uppercase mt-1`}>{item.release_date?.split('-')[0] || 'TBA'} • Suggestion</p>
+                            </div>
+                            <button onClick={async () => { const details = await fetchMovieDetails(item); saveMovie(details); setVaultSearch(''); }} className={`${theme === 'dark' ? 'bg-indigo-600/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600'} p-3 rounded-2xl hover:scale-110 transition-all`}>
+                               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+               </div>
+             )}
           </div>
         )}
 
