@@ -464,6 +464,9 @@ const App = () => {
       return;
     }
 
+    // Extract primary genre for success message
+    const primaryGenre = (movie.genre || 'Uncategorized').split(',')[0].trim();
+
     // Prepare payload without 'tmdb_id' if your DB schema is missing it
     const { tmdb_id, id, ...dbPayload } = movie;
     const movieWithTimestamp = { ...dbPayload, added_at: new Date().toISOString(), status: movie.status || 'list' };
@@ -480,7 +483,7 @@ const App = () => {
           const matches = m.title.toLowerCase().trim() === movie.title.toLowerCase().trim();
           return matches ? { ...m, ...data[0], tmdb_id: movie.tmdb_id } : m;
         }));
-        setToast(`Saved to Cloud: ${movie.title}`);
+        setToast(`${movie.title} added to ${primaryGenre} genre`);
       }
     } catch (e: any) { 
       console.error("Cloud insert error:", e);
