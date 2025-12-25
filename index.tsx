@@ -207,7 +207,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   onUpdateGenre, 
   onDelete 
 }) => {
-  const [isOpen, setIsOpen] = useState(false); // FIX: All genres closed by default to reduce scrolling
+  const [isOpen, setIsOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<number | string | null>(null);
 
   return (
@@ -385,6 +385,7 @@ const App = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const isInitialLoad = useRef(true);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -417,8 +418,9 @@ const App = () => {
     document.body.className = theme === 'dark' ? 'bg-[#050505] text-zinc-100 overflow-x-hidden' : 'bg-[#f8fafc] text-slate-900 overflow-x-hidden';
   }, [theme]);
 
+  // Sync to local storage only AFTER initial load finishes to avoid wiping data
   useEffect(() => {
-    if (movies.length >= 0) {
+    if (!isInitialLoad.current) {
       localStorage.setItem('sam_movies', JSON.stringify(movies));
     }
   }, [movies]);
@@ -438,13 +440,16 @@ const App = () => {
       if (supabase) {
         try {
           const { data, error } = await supabase.from('movie').select('*').order('added_at', { ascending: false });
-          if (!error && data) {
-            cloudItems = data;
-          }
-        } catch (e) { console.error("Cloud load error:", e); }
+          if (error) throw error;
+          if (data) cloudItems = data;
+        } catch (e) { 
+          console.error("Cloud load error:", e);
+          setToast("Vault offline: working from local cache");
+        }
       }
       
       const uniqueMap = new Map();
+      // Load local first, then overwrite with cloud if available
       localItems.forEach(m => {
         const key = m.tmdb_id ? `tmdb-${m.tmdb_id}` : `local-${m.title}`;
         uniqueMap.set(key, { ...m, status: m.status || 'list' });
@@ -456,6 +461,7 @@ const App = () => {
       });
 
       setMovies(Array.from(uniqueMap.values()));
+      isInitialLoad.current = false;
     };
 
     loadAllData();
@@ -478,17 +484,22 @@ const App = () => {
 
     const movieWithTimestamp = { ...movie, added_at: new Date().toISOString(), status: movie.status || 'list' };
     
+    // Optimistically update local state
     setMovies(prev => [movieWithTimestamp, ...prev]);
 
     if (supabase) {
       try {
         const { data, error } = await supabase.from('movie').insert([movieWithTimestamp]).select();
-        if (!error && data?.[0]) {
+        if (error) throw error;
+        if (data?.[0]) {
            setMovies(prev => prev.map(m => 
              (Number(m.tmdb_id) === Number(movie.tmdb_id)) ? { ...m, id: data[0].id } : m
            ));
         }
-      } catch (e) { console.error("Cloud sync error:", e); }
+      } catch (e) { 
+        console.error("Cloud sync error:", e);
+        setToast("Added to cache, sync pending...");
+      }
     }
     const primaryGenre = (movie.genre || 'Uncategorized').split(',')[0].trim();
     setToast(`${movie.title} added to ${primaryGenre} genre!`);
@@ -652,7 +663,7 @@ const App = () => {
                 }
             },
             config: { 
-                // Fix typo from responseModalalities to responseModalities
+                // Fix typo in property name: responseModalalities -> responseModalities
                 responseModalities: [Modality.AUDIO],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
                 inputAudioTranscription: {},
