@@ -473,7 +473,7 @@ const App = () => {
       const { data, error } = await supabase.from('movie').insert([movieWithTimestamp]).select();
       if (error) throw error;
       if (data?.[0]) {
-        // Sync local state with actual DB record (specifically the ID)
+        // Sync local state with actual DB record
         setMovies(prev => prev.map(m => {
           const matches = (movie.tmdb_id && m.tmdb_id === movie.tmdb_id) || (m.title.toLowerCase().trim() === movie.title.toLowerCase().trim());
           return matches ? data[0] : m;
@@ -482,7 +482,6 @@ const App = () => {
       }
     } catch (e: any) { 
       console.error("Cloud insert error:", e);
-      // Revert optimistic update
       setMovies(prev => prev.filter(m => m.title !== movie.title));
       setToast(`Database Error: ${e.message || "Insert failed"}`);
     }
@@ -494,7 +493,6 @@ const App = () => {
     if (!saved) return;
 
     const oldStatus = saved.status;
-    // Optimistic Update
     setMovies(prev => prev.map(m => {
        const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id) || (m.title.toLowerCase().trim() === saved.title.toLowerCase().trim());
        return isMatch ? { ...m, status } : m;
@@ -511,9 +509,8 @@ const App = () => {
       setToast(`Moved to ${status.toUpperCase()}`);
     } catch (e: any) {
       console.error("Cloud update error:", e);
-      // Revert
       setMovies(prev => prev.map(m => m.id === saved.id ? { ...m, status: oldStatus } : m));
-      setToast("Failed to update status in database.");
+      setToast("Failed to update database.");
     }
     
     if (selectedMovie) setSelectedMovie(prev => prev ? { ...prev, status } : null);
@@ -542,7 +539,7 @@ const App = () => {
     } catch (e: any) {
       console.error("Cloud update error:", e);
       setMovies(prev => prev.map(m => m.id === saved.id ? { ...m, genre: oldGenre } : m));
-      setToast("Failed to update genre in database.");
+      setToast("Failed to update database.");
     }
   };
 
@@ -551,7 +548,6 @@ const App = () => {
     const saved = getSavedMovie(movie.tmdb_id, movie.id, movie.title);
     if (!saved) return;
 
-    // Optimistic Delete
     const originalMovies = [...movies];
     setMovies(prev => prev.filter(m => {
        const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id) || (m.title.toLowerCase().trim() === saved.title.toLowerCase().trim());
@@ -655,6 +651,8 @@ const App = () => {
                                 });
                             } else if (activeTabRef.current === 'ai') {
                                 setAiInput(prev => (prev + " " + text).trim());
+                            } else if (activeTabRef.current === 'collection') {
+                                setVaultSearch(prev => (prev + " " + text).trim());
                             }
                         }
                     }
@@ -670,7 +668,7 @@ const App = () => {
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
                 inputAudioTranscription: {},
                 outputAudioTranscription: {},
-                systemInstruction: "You are a movie vault assistant. Do not speak unless spoken to. Quietly transcribe the user's movie titles, genres, or actor names accurately. If they just say a name, transcribe exactly that."
+                systemInstruction: "You are a movie vault assistant. Do not speak unless spoken to. Quietly transcribe the user's movie titles, genres, or actor names accurately."
             }
         });
         sessionPromiseRef.current = sessionPromise;
@@ -738,7 +736,7 @@ const App = () => {
       language: d.original_language,
       rating: d.vote_average,
       release_year: parseInt((d.release_date || d.first_air_date || '0000').substring(0, 4)),
-      poster: d.poster_path ? `https://image.tmorg/t/p/w500${d.poster_path}` : '',
+      poster: d.poster_path ? `https://image.tmdb.org/t/p/w500${d.poster_path}` : '',
       status: 'list' as const,
       media_type: item.media_type || 'movie',
       seasons: d.number_of_seasons,
@@ -758,6 +756,27 @@ const App = () => {
     const details = await fetchMovieDetails(item);
     setSelectedMovie(details);
   };
+
+  // RESTORED: Vault Search Auto-Suggestions from TMDB
+  useEffect(() => {
+    if (vaultSearch.length > 2) {
+      const timer = setTimeout(async () => {
+        try {
+          const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(vaultSearch)}`);
+          const data = await res.json();
+          // Only suggest things NOT already in the movies state
+          const items = (data.results || []).filter((r: any) => 
+            (r.media_type === 'movie' || r.media_type === 'tv') && 
+            !getSavedMovie(r.id, undefined, r.title || r.name)
+          );
+          setVaultSuggestions(items.slice(0, 5));
+        } catch (e) { console.error(e); }
+      }, 500);
+      return () => clearTimeout(timer);
+    } else {
+      setVaultSuggestions([]);
+    }
+  }, [vaultSearch, movies]);
 
   const uniqueGenres = useMemo(() => {
     const set = new Set<string>();
@@ -785,25 +804,6 @@ const App = () => {
       m.title.toLowerCase().includes(vaultSearch.toLowerCase())
     );
   }, [movies, vaultSearch]);
-
-  useEffect(() => {
-    if (vaultSearch.length > 2) {
-      const timer = setTimeout(async () => {
-        try {
-          const res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(vaultSearch)}`);
-          const data = await res.json();
-          const items = (data.results || []).filter((r: any) => 
-            (r.media_type === 'movie' || r.media_type === 'tv') && 
-            !getSavedMovie(r.id, undefined, r.title || r.name)
-          );
-          setVaultSuggestions(items.slice(0, 5));
-        } catch (e) { console.error(e); }
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      setVaultSuggestions([]);
-    }
-  }, [vaultSearch]);
 
   const askAi = async (prompt: string) => {
     if (!prompt.trim()) return;
@@ -899,6 +899,11 @@ const App = () => {
                       value={vaultSearch}
                       onChange={(e) => setVaultSearch(e.target.value)}
                    />
+                   {vaultSearch && (
+                      <button onClick={() => setVaultSearch('')} className="p-1 hover:bg-white/10 rounded-full transition-colors ml-2">
+                        <svg className="w-4 h-4 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                   )}
                 </div>
              </div>
 
@@ -924,6 +929,7 @@ const App = () => {
                </>
              ) : (
                <div className="space-y-12 animate-in slide-in-from-top-4 duration-500">
+                  {/* Vault Results */}
                   <div className="space-y-6">
                     <h3 className="text-xs font-black uppercase tracking-[0.3em] text-indigo-500 pl-2">Vault Results</h3>
                     {filteredVault.length > 0 ? (
@@ -946,6 +952,33 @@ const App = () => {
                       <p className="text-zinc-500 text-xs italic pl-2">Nothing matching in database.</p>
                     )}
                   </div>
+
+                  {/* RESTORED: Suggestions from Web */}
+                  {vaultSuggestions.length > 0 && (
+                    <div className="space-y-6 border-t border-white/5 pt-8">
+                       <h3 className="text-xs font-black uppercase tracking-[0.3em] text-zinc-500 pl-2">Suggestions from Web</h3>
+                       <div className="grid grid-cols-1 gap-4">
+                          {vaultSuggestions.map(item => (
+                            <div key={item.id} className={`${theme === 'dark' ? 'bg-white/5 border-white/5 hover:bg-white/10' : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100'} p-4 rounded-3xl border flex gap-6 items-center group transition-all`}>
+                               <div className="w-16 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg cursor-pointer" onClick={() => handlePreviewMovie(item)}>
+                                  <img src={item.poster_path ? `https://image.tmdb.org/t/p/w200${item.poster_path}` : 'https://via.placeholder.com/200x300'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
+                               </div>
+                               <div className="flex-1 cursor-pointer" onClick={() => handlePreviewMovie(item)}>
+                                  <h4 className={`font-black text-lg leading-tight tracking-tight ${theme === 'dark' ? 'text-zinc-300' : 'text-slate-700'}`}>{item.title || item.name}</h4>
+                                  <p className={`text-[9px] ${theme === 'dark' ? 'text-zinc-600' : 'text-zinc-400'} font-black uppercase mt-1`}>{item.release_date?.split('-')[0] || 'TBA'} • Not in Vault</p>
+                               </div>
+                               <button 
+                                  onClick={async () => { const details = await fetchMovieDetails(item); saveMovie(details); setVaultSearch(''); }} 
+                                  className={`${theme === 'dark' ? 'bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white'} p-3 rounded-2xl transition-all shadow-sm`}
+                                  title="Add to Vault"
+                               >
+                                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                               </button>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                  )}
                </div>
              )}
           </div>
