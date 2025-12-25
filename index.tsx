@@ -207,7 +207,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   onUpdateGenre, 
   onDelete 
 }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false); // Collapsed by default as requested
   const [activeMenuId, setActiveMenuId] = useState<number | string | null>(null);
 
   return (
@@ -456,16 +456,22 @@ const App = () => {
       
       const uniqueMap = new Map<string, Movie>();
       
+      const getUniqueKey = (m: Movie) => {
+        if (m.tmdb_id) return `tmdb-${m.tmdb_id}`;
+        if (m.id) return `db-${m.id}`;
+        return `title-${m.title.toLowerCase().trim()}`;
+      };
+
       // Merge Strategy: Identify duplicates using TMDB ID, fallback to Supabase ID, then Title.
       // 1. Process Local Storage
       localItems.forEach(m => {
-        const key = m.tmdb_id ? `tmdb-${m.tmdb_id}` : (m.id ? `db-${m.id}` : `title-${m.title.toLowerCase()}`);
+        const key = getUniqueKey(m);
         uniqueMap.set(key, { ...m, status: m.status || 'list' });
       });
 
       // 2. Merge Cloud Storage (Cloud overwrites local if key matches)
       cloudItems.forEach(m => {
-        const key = m.tmdb_id ? `tmdb-${m.tmdb_id}` : (m.id ? `db-${m.id}` : `title-${m.title.toLowerCase()}`);
+        const key = getUniqueKey(m);
         uniqueMap.set(key, { ...m, status: m.status || 'list' });
       });
 
@@ -483,14 +489,15 @@ const App = () => {
     return movies.find(m => 
       (tmdb_id && m.tmdb_id === tmdb_id) || 
       (db_id && m.id === db_id) ||
-      (!tmdb_id && !db_id && title && m.title.toLowerCase() === title.toLowerCase())
+      (!tmdb_id && !db_id && title && m.title.toLowerCase().trim() === title.toLowerCase().trim())
     ) || null;
   };
 
   const isMovieSaved = (tmdb_id?: number) => tmdb_id ? !!getSavedMovie(tmdb_id) : false;
 
   const saveMovie = async (movie: Movie) => {
-    if (isMovieSaved(movie.tmdb_id)) {
+    const existing = getSavedMovie(movie.tmdb_id, movie.id, movie.title);
+    if (existing) {
       setToast(`"${movie.title}" is already in your vault.`);
       return;
     }
@@ -506,9 +513,10 @@ const App = () => {
         if (error) throw error;
         if (data?.[0]) {
            // Hydrate the local item with the actual Supabase ID
-           setMovies(prev => prev.map(m => 
-             (Number(m.tmdb_id) === Number(movie.tmdb_id)) ? { ...m, id: data[0].id } : m
-           ));
+           setMovies(prev => prev.map(m => {
+             const matches = (movie.tmdb_id && m.tmdb_id === movie.tmdb_id) || (m.title.toLowerCase().trim() === movie.title.toLowerCase().trim());
+             return matches ? { ...m, id: data[0].id } : m;
+           }));
         }
       } catch (e) { 
         console.error("Cloud sync error:", e);
@@ -528,7 +536,7 @@ const App = () => {
     }
 
     setMovies(prev => prev.map(m => {
-       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id);
+       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id) || (m.title.toLowerCase().trim() === saved.title.toLowerCase().trim());
        return isMatch ? { ...m, status } : m;
     }));
 
@@ -538,6 +546,8 @@ const App = () => {
             await supabase.from('movie').update({ status }).eq('id', saved.id);
         } else if (saved.tmdb_id) {
             await supabase.from('movie').update({ status }).eq('tmdb_id', Number(saved.tmdb_id));
+        } else {
+            await supabase.from('movie').update({ status }).eq('title', saved.title);
         }
       } catch (e) { console.error("Cloud status update error:", e); }
     }
@@ -551,7 +561,7 @@ const App = () => {
     if (!saved) return;
 
     setMovies(prev => prev.map(m => {
-       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id);
+       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id) || (m.title.toLowerCase().trim() === saved.title.toLowerCase().trim());
        return isMatch ? { ...m, genre: newGenre } : m;
     }));
 
@@ -561,6 +571,8 @@ const App = () => {
           await supabase.from('movie').update({ genre: newGenre }).eq('id', saved.id);
         } else if (saved.tmdb_id) {
           await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', Number(saved.tmdb_id));
+        } else {
+          await supabase.from('movie').update({ genre: newGenre }).eq('title', saved.title);
         }
       } catch (e) { console.error("Cloud genre sync error:", e); }
     }
@@ -573,11 +585,15 @@ const App = () => {
 
     // Optimistically update local state
     setMovies(prev => prev.filter(m => {
-       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id);
+       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id) || (m.title.toLowerCase().trim() === saved.title.toLowerCase().trim());
        return !isMatch;
     }));
     
-    if (selectedMovie && ((saved.id && selectedMovie.id === saved.id) || (saved.tmdb_id && selectedMovie.tmdb_id === saved.tmdb_id))) {
+    if (selectedMovie && (
+        (saved.id && selectedMovie.id === saved.id) || 
+        (saved.tmdb_id && selectedMovie.tmdb_id === saved.tmdb_id) || 
+        (selectedMovie.title.toLowerCase().trim() === saved.title.toLowerCase().trim())
+    )) {
       setSelectedMovie(null);
     }
     setToast("Removed from collection");
@@ -585,11 +601,11 @@ const App = () => {
     if (supabase) {
       try {
         if (saved.id) {
-          const { error } = await supabase.from('movie').delete().eq('id', saved.id);
-          if (error) throw error;
+          await supabase.from('movie').delete().eq('id', saved.id);
         } else if (saved.tmdb_id) {
-          const { error } = await supabase.from('movie').delete().eq('tmdb_id', Number(saved.tmdb_id));
-          if (error) throw error;
+          await supabase.from('movie').delete().eq('tmdb_id', Number(saved.tmdb_id));
+        } else {
+          await supabase.from('movie').delete().eq('title', saved.title);
         }
       } catch (e) { console.error("Cloud delete sync error:", e); }
     }
@@ -1023,7 +1039,7 @@ const App = () => {
                     </div>
                     <div className="flex gap-2">
                        <button onClick={() => handlePreviewMovie(item)} className={`${theme === 'dark' ? 'bg-white/5 text-zinc-400' : 'bg-zinc-100 text-zinc-500'} p-4 rounded-2xl hover:bg-indigo-600/20 hover:text-indigo-500 transition-all`} title="View Details">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                        </button>
                        <button onClick={async () => { const details = await fetchMovieDetails(item); saveMovie(details); setActiveTab('collection'); }} className={`${theme === 'dark' ? 'bg-white/5 text-white' : 'bg-zinc-100 text-zinc-400'} p-4 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all`} title="Quick Add">
                           <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
