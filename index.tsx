@@ -33,7 +33,7 @@ interface Movie {
   seasons?: number;
   episodes?: number;
   added_at: string;
-  tmdb_id: number; // TMDB Unique ID (Required for deduplication)
+  tmdb_id?: number; // TMDB Unique ID (Optional fallback)
 }
 
 type Theme = 'dark' | 'light';
@@ -126,7 +126,7 @@ const MovieActionMenu = ({
               Genre <svg className="w-3 h-3 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
             </button>
             <div className={`h-px ${theme === 'dark' ? 'bg-white/10' : 'bg-zinc-200'} my-1 mx-2`}></div>
-            <button onClick={() => { if(confirm('Remove from collection?')) onDelete(); }} className="w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hover:bg-rose-500/20 text-rose-500 rounded-xl transition-colors">
+            <button onClick={() => { if(confirm(`Remove "${movie.title}" from collection?`)) onDelete(); }} className="w-full px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hover:bg-rose-500/20 text-rose-500 rounded-xl transition-colors">
               Delete
             </button>
           </div>
@@ -207,7 +207,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
   onUpdateGenre, 
   onDelete 
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const [activeMenuId, setActiveMenuId] = useState<number | string | null>(null);
 
   return (
@@ -226,7 +226,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
       {isOpen && (
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 animate-in slide-in-from-top-2 duration-300">
           {movies.map(m => {
-            const isMenuId = m.id || m.tmdb_id;
+            const isMenuId = m.id || m.tmdb_id || m.title;
             const isMenuOpen = activeMenuId === isMenuId;
             return (
               <div key={isMenuId} className={`group relative aspect-[2/3] transition-all duration-300 ${isMenuOpen ? 'z-50' : 'z-0 hover:z-20'}`}>
@@ -234,7 +234,11 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
                   onClick={() => onMovieClick(m)}
                   className={`absolute inset-0 rounded-2xl overflow-hidden ring-1 ${theme === 'dark' ? 'ring-white/5 bg-zinc-900' : 'ring-zinc-200 bg-zinc-100'} group-hover:ring-indigo-500/50 transition-all shadow-xl cursor-pointer`}
                 >
-                  <img src={m.poster} className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" alt={m.title} />
+                  {m.poster ? (
+                    <img src={m.poster} className="w-full h-full object-cover transition-transform group-hover:scale-110" loading="lazy" alt={m.title} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-zinc-600 text-[8px] uppercase font-black text-center p-4">No Poster</div>
+                  )}
                   
                   {(m.status === 'favorite') && (
                     <div className="absolute top-2 left-2 z-10 bg-yellow-500 text-black p-1 rounded-lg shadow-lg">
@@ -245,7 +249,7 @@ const GenreGroup: React.FC<GenreGroupProps> = ({
                   <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/20 to-transparent p-3 flex flex-col justify-end pointer-events-none">
                      <h3 className="text-[10px] font-bold line-clamp-1 text-white group-hover:text-indigo-300 transition-colors">{m.title}</h3>
                      <div className="flex justify-between items-center mt-1">
-                        <p className="text-[9px] text-yellow-500 font-bold">★ {m.rating?.toFixed(1)}</p>
+                        <p className="text-[9px] text-yellow-500 font-bold">★ {m.rating?.toFixed(1) || '0.0'}</p>
                         {(m.status === 'watching') && (
                           <div className="flex items-center gap-1">
                             <span className="text-[8px] font-black uppercase text-amber-500 tracking-tighter">Live</span>
@@ -300,8 +304,8 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
           {trailerId ? (
             <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${trailerId}?autoplay=1`} allow="autoplay" allowFullScreen title="trailer"></iframe>
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-zinc-900">
-               <img src={movie.poster} className="w-full h-full object-cover blur-3xl opacity-40 absolute inset-0" alt="poster-blur" />
+            <div className="w-full h-full flex items-center justify-center bg-zinc-900 relative">
+               {movie.poster && <img src={movie.poster} className="w-full h-full object-cover blur-3xl opacity-40 absolute inset-0" alt="poster-blur" />}
                <p className="relative text-zinc-500 font-black uppercase tracking-widest text-[10px]">No Trailer Available</p>
             </div>
           )}
@@ -314,9 +318,9 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
               {!isSaved && <div className="bg-indigo-600/20 text-indigo-400 text-[9px] font-black px-2 py-1 rounded-lg uppercase tracking-widest border border-indigo-600/30">Preview</div>}
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-yellow-500 font-black text-sm">★ {movie.rating?.toFixed(1)}</span>
+              <span className="text-yellow-500 font-black text-sm">★ {movie.rating?.toFixed(1) || '0.0'}</span>
               <span className={`w-1 h-1 rounded-full ${theme === 'dark' ? 'bg-zinc-700' : 'bg-zinc-300'}`}></span>
-              <span className={`font-bold text-xs uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-500'}`}>{movie.release_year} • {movie.genre}</span>
+              <span className={`font-bold text-xs uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-500'}`}>{movie.release_year || 'TBA'} • {movie.genre || 'Uncategorized'}</span>
             </div>
           </div>
 
@@ -344,11 +348,11 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
             <div className="md:col-span-2 space-y-6">
               <div>
                 <h3 className="text-indigo-500 font-black uppercase tracking-widest text-[11px] mb-3">Storyline</h3>
-                <p className={`${theme === 'dark' ? 'text-zinc-300' : 'text-slate-600'} leading-relaxed text-base font-medium`}>{movie.description}</p>
+                <p className={`${theme === 'dark' ? 'text-zinc-300' : 'text-slate-600'} leading-relaxed text-base font-medium`}>{movie.description || "No description available."}</p>
               </div>
               {isSaved && (
                 <button 
-                  onClick={() => { if(confirm('Permanently remove this from your vault?')) onDelete(); }}
+                  onClick={() => { if(confirm(`Permanently remove "${movie.title}" from your vault?`)) onDelete(); }}
                   className="px-8 py-4 border border-rose-500/20 text-rose-500 hover:bg-rose-500/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
                 >
                   Delete from Vault
@@ -358,16 +362,16 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
             <div className="space-y-8">
               <div>
                 <h3 className="text-zinc-500 font-black uppercase tracking-widest text-[11px] mb-2">Director</h3>
-                <p className={`text-sm font-bold ${textClass} tracking-wide`}>{movie.director}</p>
+                <p className={`text-sm font-bold ${textClass} tracking-wide`}>{movie.director || 'N/A'}</p>
               </div>
               <div>
                 <h3 className="text-zinc-500 font-black uppercase tracking-widest text-[11px] mb-2">Starring</h3>
-                <p className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-500'} leading-relaxed font-medium`}>{movie.cast}</p>
+                <p className={`text-xs ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-500'} leading-relaxed font-medium`}>{movie.cast || 'N/A'}</p>
               </div>
               {movie.media_type === 'tv' && (
                 <div className={`flex gap-8 border-t ${theme === 'dark' ? 'border-white/5' : 'border-zinc-200'} pt-6`}>
-                  <div><h3 className="text-zinc-500 font-black text-[10px] mb-1 uppercase tracking-widest">Seasons</h3><p className="font-bold text-indigo-400 text-lg">{movie.seasons}</p></div>
-                  <div><h3 className="text-zinc-500 font-black text-[10px] mb-1 uppercase tracking-widest">Episodes</h3><p className="font-bold text-indigo-400 text-lg">{movie.episodes}</p></div>
+                  <div><h3 className="text-zinc-500 font-black text-[10px] mb-1 uppercase tracking-widest">Seasons</h3><p className="font-bold text-indigo-400 text-lg">{movie.seasons || '?'}</p></div>
+                  <div><h3 className="text-zinc-500 font-black text-[10px] mb-1 uppercase tracking-widest">Episodes</h3><p className="font-bold text-indigo-400 text-lg">{movie.episodes || '?'}</p></div>
                 </div>
               )}
             </div>
@@ -450,15 +454,19 @@ const App = () => {
         }
       }
       
-      const uniqueMap = new Map<number, Movie>();
+      const uniqueMap = new Map<string, Movie>();
       
-      // Merge Strategy: Primary identity is TMDB_ID. Cloud data always overwrites local data.
+      // Merge Strategy: Identify duplicates using TMDB ID, fallback to Supabase ID, then Title.
+      // 1. Process Local Storage
       localItems.forEach(m => {
-        if (m.tmdb_id) uniqueMap.set(m.tmdb_id, { ...m, status: m.status || 'list' });
+        const key = m.tmdb_id ? `tmdb-${m.tmdb_id}` : (m.id ? `db-${m.id}` : `title-${m.title.toLowerCase()}`);
+        uniqueMap.set(key, { ...m, status: m.status || 'list' });
       });
 
+      // 2. Merge Cloud Storage (Cloud overwrites local if key matches)
       cloudItems.forEach(m => {
-        if (m.tmdb_id) uniqueMap.set(m.tmdb_id, { ...m, status: m.status || 'list' });
+        const key = m.tmdb_id ? `tmdb-${m.tmdb_id}` : (m.id ? `db-${m.id}` : `title-${m.title.toLowerCase()}`);
+        uniqueMap.set(key, { ...m, status: m.status || 'list' });
       });
 
       setMovies(Array.from(uniqueMap.values()));
@@ -471,14 +479,21 @@ const App = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
-  const getSavedMovie = (tmdb_id: number) => {
-    return movies.find(m => Number(m.tmdb_id) === Number(tmdb_id)) || null;
+  const getSavedMovie = (tmdb_id?: number, db_id?: number, title?: string) => {
+    return movies.find(m => 
+      (tmdb_id && m.tmdb_id === tmdb_id) || 
+      (db_id && m.id === db_id) ||
+      (!tmdb_id && !db_id && title && m.title.toLowerCase() === title.toLowerCase())
+    ) || null;
   };
 
   const isMovieSaved = (tmdb_id?: number) => tmdb_id ? !!getSavedMovie(tmdb_id) : false;
 
   const saveMovie = async (movie: Movie) => {
-    if (isMovieSaved(movie.tmdb_id)) return;
+    if (isMovieSaved(movie.tmdb_id)) {
+      setToast(`"${movie.title}" is already in your vault.`);
+      return;
+    }
 
     const movieWithTimestamp = { ...movie, added_at: new Date().toISOString(), status: movie.status || 'list' };
     
@@ -497,7 +512,7 @@ const App = () => {
         }
       } catch (e) { 
         console.error("Cloud sync error:", e);
-        setToast("Added to cache, will sync later");
+        setToast("Added locally, cloud sync pending...");
       }
     }
     const primaryGenre = (movie.genre || 'Uncategorized').split(',')[0].trim();
@@ -505,23 +520,24 @@ const App = () => {
   };
 
   const updateStatus = async (movie: Movie, status: Movie['status']) => {
-    const saved = getSavedMovie(movie.tmdb_id);
+    const saved = getSavedMovie(movie.tmdb_id, movie.id, movie.title);
     
     if (!saved) {
       await saveMovie({ ...movie, status });
       return;
     }
 
-    setMovies(prev => prev.map(m => 
-      (Number(m.tmdb_id) === Number(movie.tmdb_id)) ? { ...m, status } : m
-    ));
+    setMovies(prev => prev.map(m => {
+       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id);
+       return isMatch ? { ...m, status } : m;
+    }));
 
     if (supabase) {
       try {
         if (saved.id) {
             await supabase.from('movie').update({ status }).eq('id', saved.id);
-        } else {
-            await supabase.from('movie').update({ status }).eq('tmdb_id', Number(movie.tmdb_id));
+        } else if (saved.tmdb_id) {
+            await supabase.from('movie').update({ status }).eq('tmdb_id', Number(saved.tmdb_id));
         }
       } catch (e) { console.error("Cloud status update error:", e); }
     }
@@ -531,19 +547,20 @@ const App = () => {
   };
 
   const updateGenre = async (movie: Movie, newGenre: string) => {
-    const saved = getSavedMovie(movie.tmdb_id);
+    const saved = getSavedMovie(movie.tmdb_id, movie.id, movie.title);
     if (!saved) return;
 
-    setMovies(prev => prev.map(m => 
-      (Number(m.tmdb_id) === Number(movie.tmdb_id)) ? { ...m, genre: newGenre } : m
-    ));
+    setMovies(prev => prev.map(m => {
+       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id);
+       return isMatch ? { ...m, genre: newGenre } : m;
+    }));
 
     if (supabase) {
       try {
         if (saved.id) {
           await supabase.from('movie').update({ genre: newGenre }).eq('id', saved.id);
-        } else {
-          await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', Number(movie.tmdb_id));
+        } else if (saved.tmdb_id) {
+          await supabase.from('movie').update({ genre: newGenre }).eq('tmdb_id', Number(saved.tmdb_id));
         }
       } catch (e) { console.error("Cloud genre sync error:", e); }
     }
@@ -551,21 +568,28 @@ const App = () => {
   };
 
   const handleDelete = async (movie: Movie) => {
-    const tmdbId = movie.tmdb_id;
-    const saved = getSavedMovie(tmdbId);
-    
+    const saved = getSavedMovie(movie.tmdb_id, movie.id, movie.title);
+    if (!saved) return;
+
     // Optimistically update local state
-    setMovies(prev => prev.filter(m => Number(m.tmdb_id) !== Number(tmdbId)));
+    setMovies(prev => prev.filter(m => {
+       const isMatch = (saved.id && m.id === saved.id) || (saved.tmdb_id && m.tmdb_id === saved.tmdb_id);
+       return !isMatch;
+    }));
     
-    if (selectedMovie?.tmdb_id === tmdbId) setSelectedMovie(null);
+    if (selectedMovie && ((saved.id && selectedMovie.id === saved.id) || (saved.tmdb_id && selectedMovie.tmdb_id === saved.tmdb_id))) {
+      setSelectedMovie(null);
+    }
     setToast("Removed from collection");
 
     if (supabase) {
       try {
-        if (saved?.id) {
-          await supabase.from('movie').delete().eq('id', saved.id);
-        } else {
-          await supabase.from('movie').delete().eq('tmdb_id', Number(tmdbId));
+        if (saved.id) {
+          const { error } = await supabase.from('movie').delete().eq('id', saved.id);
+          if (error) throw error;
+        } else if (saved.tmdb_id) {
+          const { error } = await supabase.from('movie').delete().eq('tmdb_id', Number(saved.tmdb_id));
+          if (error) throw error;
         }
       } catch (e) { console.error("Cloud delete sync error:", e); }
     }
@@ -727,7 +751,7 @@ const App = () => {
       language: d.original_language,
       rating: d.vote_average,
       release_year: parseInt((d.release_date || d.first_air_date || '0000').substring(0, 4)),
-      poster: d.poster_path ? `https://image.tmdb.org/t/p/w500${d.poster_path}` : 'https://via.placeholder.com/500x750',
+      poster: d.poster_path ? `https://image.tmdb.org/t/p/w500${d.poster_path}` : '',
       status: 'list' as const,
       media_type: item.media_type || 'movie',
       seasons: d.number_of_seasons,
@@ -739,7 +763,7 @@ const App = () => {
 
   const handlePreviewMovie = async (item: any) => {
     const tmdbId = item.id || item.tmdb_id;
-    const saved = getSavedMovie(tmdbId);
+    const saved = getSavedMovie(tmdbId, item.id, item.title || item.name);
     if (saved) {
         setSelectedMovie(saved);
         return;
@@ -784,7 +808,7 @@ const App = () => {
           const data = await res.json();
           const items = (data.results || []).filter((r: any) => 
             (r.media_type === 'movie' || r.media_type === 'tv') && 
-            !getSavedMovie(r.id)
+            !getSavedMovie(r.id, undefined, r.title || r.name)
           );
           setVaultSuggestions(items.slice(0, 5));
         } catch (e) { console.error(e); }
@@ -838,7 +862,7 @@ const App = () => {
 
   const displayedModalMovie = useMemo(() => {
     if (!selectedMovie) return null;
-    const saved = getSavedMovie(selectedMovie.tmdb_id);
+    const saved = getSavedMovie(selectedMovie.tmdb_id, selectedMovie.id, selectedMovie.title);
     return saved ? { ...selectedMovie, ...saved } : selectedMovie;
   }, [selectedMovie, movies]);
 
@@ -926,9 +950,13 @@ const App = () => {
                     {filteredVault.length > 0 ? (
                       <div className="grid grid-cols-1 gap-4">
                         {filteredVault.map(item => (
-                          <div key={item.id || item.tmdb_id} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-4 rounded-3xl border flex gap-6 items-center group hover:border-indigo-500/40 transition-all cursor-pointer`} onClick={() => handlePreviewMovie(item)}>
+                          <div key={item.id || item.tmdb_id || item.title} className={`${theme === 'dark' ? 'glass-dark border-white/5' : 'bg-white border-zinc-200 shadow-md'} p-4 rounded-3xl border flex gap-6 items-center group hover:border-indigo-500/40 transition-all cursor-pointer`} onClick={() => handlePreviewMovie(item)}>
                             <div className="w-16 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-zinc-900 shadow-lg">
-                               <img src={item.poster} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
+                               {item.poster ? (
+                                 <img src={item.poster} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="poster" />
+                               ) : (
+                                 <div className="w-full h-full flex items-center justify-center bg-zinc-800 text-zinc-600 text-[6px] uppercase font-black text-center">No Poster</div>
+                               )}
                             </div>
                             <div className="flex-1">
                                <h4 className={`font-black text-lg leading-tight tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{item.title}</h4>
@@ -995,7 +1023,7 @@ const App = () => {
                     </div>
                     <div className="flex gap-2">
                        <button onClick={() => handlePreviewMovie(item)} className={`${theme === 'dark' ? 'bg-white/5 text-zinc-400' : 'bg-zinc-100 text-zinc-500'} p-4 rounded-2xl hover:bg-indigo-600/20 hover:text-indigo-500 transition-all`} title="View Details">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                        </button>
                        <button onClick={async () => { const details = await fetchMovieDetails(item); saveMovie(details); setActiveTab('collection'); }} className={`${theme === 'dark' ? 'bg-white/5 text-white' : 'bg-zinc-100 text-zinc-400'} p-4 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all`} title="Quick Add">
                           <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
