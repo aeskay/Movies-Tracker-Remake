@@ -382,6 +382,159 @@ const DetailModal = ({ movie, theme, isSaved, onClose, onUpdateStatus, onDelete 
   );
 };
 
+const ManualAddModal = ({ theme, existingGenres, onClose, onSave }: { theme: Theme, existingGenres: string[], onClose: () => void, onSave: (m: Movie) => void }) => {
+  const [isNewGenre, setIsNewGenre] = useState(false);
+  const [formData, setFormData] = useState<Partial<Movie>>({
+    title: '',
+    description: '',
+    genre: '',
+    poster: '',
+    rating: 0,
+    release_year: new Date().getFullYear(),
+    status: 'list',
+    media_type: 'movie',
+    director: '',
+    cast: '',
+    trailer: '',
+    language: 'English'
+  });
+
+  const glassClass = theme === 'dark' ? 'glass-dark' : 'glass-light';
+  const inputClass = `w-full ${theme === 'dark' ? 'bg-white/5 border-white/10 text-white' : 'bg-zinc-50 border-zinc-200 text-slate-800'} border rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all text-sm font-medium placeholder:text-zinc-500`;
+  const labelClass = `text-[10px] font-black uppercase tracking-widest ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} mb-2 block ml-1`;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title) return;
+    
+    const movie: Movie = {
+      ...formData as Movie,
+      added_at: new Date().toISOString()
+    };
+    onSave(movie);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
+      <div className="absolute inset-0 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300" onClick={onClose}></div>
+      <div className={`relative ${glassClass} w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-300 no-scrollbar p-8 sm:p-10`}>
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className={`text-2xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Manual Entry</h2>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 mt-1">Add to your cloud vault</p>
+          </div>
+          <button onClick={onClose} className="p-3 hover:bg-white/5 rounded-2xl transition-colors text-zinc-500">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="sm:col-span-2">
+            <label className={labelClass}>Movie Title *</label>
+            <input required className={inputClass} placeholder="e.g. Inception" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className={labelClass}>Poster Image URL</label>
+            <input className={inputClass} placeholder="https://..." value={formData.poster} onChange={e => setFormData({...formData, poster: e.target.value})} />
+          </div>
+
+          <div>
+            <label className={labelClass}>Genre</label>
+            {!isNewGenre ? (
+              <select 
+                className={inputClass} 
+                value={formData.genre} 
+                onChange={e => {
+                  if (e.target.value === 'ADD_NEW') {
+                    setIsNewGenre(true);
+                    setFormData({...formData, genre: ''});
+                  } else {
+                    setFormData({...formData, genre: e.target.value});
+                  }
+                }}
+              >
+                <option value="">Select Genre</option>
+                {existingGenres.map(g => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+                <option value="ADD_NEW" className="text-indigo-500 font-bold">+ Add New Genre...</option>
+              </select>
+            ) : (
+              <div className="relative">
+                <input 
+                  autoFocus
+                  className={inputClass} 
+                  placeholder="Type new genre..." 
+                  value={formData.genre} 
+                  onChange={e => setFormData({...formData, genre: e.target.value})} 
+                />
+                <button 
+                  type="button"
+                  onClick={() => { setIsNewGenre(false); setFormData({...formData, genre: ''}); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-zinc-500 hover:text-indigo-500"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className={labelClass}>Release Year</label>
+            <input type="number" className={inputClass} value={formData.release_year} onChange={e => setFormData({...formData, release_year: parseInt(e.target.value)})} />
+          </div>
+
+          <div>
+            <label className={labelClass}>Rating (0-10)</label>
+            <input type="number" step="0.1" min="0" max="10" className={inputClass} value={formData.rating} onChange={e => setFormData({...formData, rating: parseFloat(e.target.value)})} />
+          </div>
+
+          <div>
+            <label className={labelClass}>Category</label>
+            <select className={inputClass} value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}>
+              <option value="list">To Watch</option>
+              <option value="watching">Watching</option>
+              <option value="watched">Watched</option>
+              <option value="favorite">Favorite</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelClass}>Director</label>
+            <input className={inputClass} placeholder="Christopher Nolan" value={formData.director} onChange={e => setFormData({...formData, director: e.target.value})} />
+          </div>
+
+          <div>
+            <label className={labelClass}>Media Type</label>
+            <select className={inputClass} value={formData.media_type} onChange={e => setFormData({...formData, media_type: e.target.value as any})}>
+              <option value="movie">Movie</option>
+              <option value="tv">TV Show</option>
+            </select>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className={labelClass}>Cast</label>
+            <input className={inputClass} placeholder="Leonardo DiCaprio, Joseph Gordon-Levitt" value={formData.cast} onChange={e => setFormData({...formData, cast: e.target.value})} />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className={labelClass}>Description</label>
+            <textarea rows={3} className={`${inputClass} resize-none`} placeholder="A thief who steals corporate secrets..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+          </div>
+
+          <div className="sm:col-span-2 pt-4">
+            <button type="submit" className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[24px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-indigo-600/30 transition-all active:scale-95">
+              Save to Vault
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const App = () => {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('sam_theme') as Theme) || 'dark');
   const [activeTab, setActiveTab] = useState<'collection' | 'discover' | 'ai'>('collection');
@@ -389,6 +542,8 @@ const App = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  
+  const [isManualAddOpen, setIsManualAddOpen] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -858,8 +1013,8 @@ const App = () => {
       <main className="max-w-6xl mx-auto p-6 sm:p-12">
         {activeTab === 'collection' && (
           <div className="space-y-10 animate-in fade-in duration-700">
-             <div className="max-w-xl mx-auto w-full">
-                <div className={`relative flex items-center ${theme === 'dark' ? 'bg-white/5' : 'bg-white border border-zinc-200 shadow-sm'} rounded-3xl px-6 py-4 focus-within:ring-2 focus-within:ring-indigo-600/30 transition-all`}>
+             <div className="max-w-xl mx-auto w-full flex gap-3">
+                <div className={`relative flex-1 flex items-center ${theme === 'dark' ? 'bg-white/5' : 'bg-white border border-zinc-200 shadow-sm'} rounded-3xl px-6 py-4 focus-within:ring-2 focus-within:ring-indigo-600/30 transition-all`}>
                    <svg className={`w-5 h-5 ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'} mr-4`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                    <input 
                       className="bg-transparent border-none outline-none w-full text-base font-medium placeholder:text-zinc-500" 
@@ -868,6 +1023,13 @@ const App = () => {
                       onChange={(e) => setVaultSearch(e.target.value)}
                    />
                 </div>
+                <button 
+                  onClick={() => setIsManualAddOpen(true)}
+                  className={`p-4 rounded-3xl transition-all ${theme === 'dark' ? 'bg-white/5 text-indigo-400 hover:bg-white/10' : 'bg-white border border-zinc-200 text-indigo-600 shadow-sm hover:bg-zinc-50'}`}
+                  title="Manual Add"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                </button>
              </div>
 
              {!vaultSearch ? (
@@ -1007,6 +1169,9 @@ const App = () => {
          ))}
       </nav>
 
+      {isManualAddOpen && (
+        <ManualAddModal theme={theme} existingGenres={uniqueGenres} onClose={() => setIsManualAddOpen(false)} onSave={saveMovie} />
+      )}
       {displayedModalMovie && (
         <DetailModal movie={displayedModalMovie} theme={theme} isSaved={isMovieSaved(displayedModalMovie.tmdb_id, displayedModalMovie.title)} onClose={() => setSelectedMovie(null)} onUpdateStatus={(s) => updateStatus(displayedModalMovie, s)} onDelete={() => handleDelete(displayedModalMovie)} />
       )}
