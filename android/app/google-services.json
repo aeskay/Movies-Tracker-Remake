@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "107801496324",
+    "project_id": "movie-tracker-b7be2",
+    "storage_bucket": "movie-tracker-b7be2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:107801496324:android:ae2680c3955162f1b2de51",
+        "android_client_info": {
+          "package_name": "sam.movies"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "107801496324-15uqprl788b42p3sjlf851tbep09alf9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "sam.movies",
+            "certificate_hash": "8716c7ec064c06805c6ab97fd6d1f8c33024bd6c"
+          }
+        },
+        {
+          "client_id": "107801496324-cfruudj9ki59skrq6cm4blg49qvni6kj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD6TtEyAqsnVi3Yn4ko3Ft2kZO6ux4fQGo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "107801496324-cfruudj9ki59skrq6cm4blg49qvni6kj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,7 +1,7 @@
 
 {
-  "name": "Sam Movies",
-  "short_name": "SamMovies",
+  "name": "Share Movies",
+  "short_name": "MovieTracker",
   "description": "Your ultimate personal movie vault and AI oracle.",
   "start_url": "/",
   "display": "standalone",
