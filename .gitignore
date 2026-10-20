@@ -35,3 +35,10 @@ build/
 temp/
 .next/
 .cache/
+
+# iOS
+ios/DerivedData/
+ios/App/DerivedData/
+*.xcuserstate
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/

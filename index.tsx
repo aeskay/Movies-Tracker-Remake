@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type, LiveServerMessage, Modality } from "@google/genai";
-import { auth, db, googleProvider } from './firebase';
+import { auth, db, googleProvider, messagingPromise } from './firebase';
+import { getToken, onMessage } from 'firebase/messaging';
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -1528,55 +1529,130 @@ const App = () => {
     return unsubscribe;
   }, []);
 
+  // ─── Push Notification Registration ──────────────────────────────────────────
+  // Handles both native (Android/iOS via Capacitor) and web (FCM web push) paths.
   useEffect(() => {
-    if (!user || !Capacitor.isNativePlatform()) return;
+    if (!user) return;
 
-    const registerPush = async () => {
-      try {
-        let permStatus = await PushNotifications.checkPermissions();
-        if (permStatus.receive === 'prompt') {
-          permStatus = await PushNotifications.requestPermissions();
-        }
-        if (permStatus.receive !== 'granted') {
-          console.warn('User denied push notifications');
-          return;
-        }
-        await PushNotifications.register();
-      } catch (err) {
-        console.error('Error registering push:', err);
-      }
-    };
-
-    registerPush();
-
-    const addListeners = async () => {
-      await PushNotifications.addListener('registration', async (token) => {
+    if (Capacitor.isNativePlatform()) {
+      // ── Native Path ──
+      const registerPush = async () => {
         try {
-          const profileRef = doc(db, 'users', user.uid, 'profile', 'data');
-          await setDoc(profileRef, { fcmToken: token.value }, { merge: true });
+          let permStatus = await PushNotifications.checkPermissions();
+          if (permStatus.receive === 'prompt') {
+            permStatus = await PushNotifications.requestPermissions();
+          }
+          if (permStatus.receive !== 'granted') {
+            console.warn('Native push: permission denied');
+            return;
+          }
+          await PushNotifications.register();
         } catch (err) {
-          console.error('Failed to save FCM token:', err);
+          console.error('Native push registration error:', err);
         }
-      });
+      };
 
-      await PushNotifications.addListener('registrationError', (err) => {
-        console.error('Registration error: ', err.error);
-      });
+      registerPush();
 
-      await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('Push notification received: ', notification);
-      });
+      const addListeners = async () => {
+        await PushNotifications.addListener('registration', async (token) => {
+          try {
+            const profileRef = doc(db, 'users', user.uid, 'profile', 'data');
+            await setDoc(profileRef, { fcmToken: token.value }, { merge: true });
+            console.log('Native FCM token saved');
+          } catch (err) {
+            console.error('Failed to save native FCM token:', err);
+          }
+        });
 
-      await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-        console.log('Push notification action performed', notification.actionId);
-      });
-    };
+        await PushNotifications.addListener('registrationError', (err) => {
+          console.error('Native push registration error:', err.error);
+        });
 
-    addListeners();
+        // Show foreground notifications as a toast
+        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          const msg = notification.body || notification.title || 'New notification';
+          setToast(msg);
+        });
 
-    return () => {
-      PushNotifications.removeAllListeners();
-    };
+        // Navigate based on notification type when tapped
+        await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+          const type = notification.notification.data?.type;
+          if (type === 'friend_request' || type === 'friend_accepted') {
+            setActiveTab('profile');
+            setIsNotificationsOpen(true);
+          } else if (type === 'friend_watching' || type === 'friend_recommended') {
+            setActiveTab('board');
+          } else if (type === 'new_story') {
+            setActiveTab('social');
+          } else {
+            setIsNotificationsOpen(true);
+          }
+        });
+      };
+
+      addListeners();
+
+      return () => {
+        PushNotifications.removeAllListeners();
+      };
+    } else {
+      // ── Web FCM Path ──
+      // Requires firebase-messaging-sw.js in /public and a VAPID key in .env
+      const setupWebPush = async () => {
+        try {
+          const messaging = await messagingPromise;
+          if (!messaging) {
+            console.log('Firebase Messaging not supported in this browser');
+            return;
+          }
+
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            console.warn('Web push: notification permission denied');
+            return;
+          }
+
+          // Wait for the firebase-messaging-sw.js to be registered
+          const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          await navigator.serviceWorker.ready;
+
+          const vapidKey = import.meta.env.VITE_VAPID_KEY;
+          if (!vapidKey) {
+            console.warn('VITE_VAPID_KEY not set in .env — web push will not work. Generate it in Firebase Console → Project Settings → Cloud Messaging → Web Push certificates.');
+            return;
+          }
+
+          const token = await getToken(messaging, {
+            vapidKey,
+            serviceWorkerRegistration: swReg
+          });
+
+          if (token) {
+            const profileRef = doc(db, 'users', user.uid, 'profile', 'data');
+            await setDoc(profileRef, { fcmToken: token }, { merge: true });
+            console.log('Web FCM token saved');
+          }
+
+          // Handle foreground messages (app is open) — show as toast
+          const unsubForeground = onMessage(messaging, (payload) => {
+            const body = payload.notification?.body || payload.data?.text || 'New notification';
+            setToast(body);
+          });
+
+          return unsubForeground;
+        } catch (err) {
+          console.error('Web push setup failed:', err);
+        }
+      };
+
+      let unsubForeground: (() => void) | undefined;
+      setupWebPush().then((unsub) => { unsubForeground = unsub; });
+
+      return () => {
+        if (unsubForeground) unsubForeground();
+      };
+    }
   }, [user]);
 
   useEffect(() => {
@@ -1611,7 +1687,7 @@ const App = () => {
         list.push({ uid: docSnap.id, ...docSnap.data() });
       });
       const blocked = userProfile?.blockedUsers || [];
-      setFriendsList(list.filter(f => !blocked.includes(f.uid)));
+      setFriendsList(list.filter(f => !blocked.includes(f.uid) && f.uid !== user.uid));
     });
 
     // Listen to real-time notifications
@@ -3611,6 +3687,20 @@ Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, r
                           const docRef = doc(db, "users", user.uid, "notifications", n.id);
                           await updateDoc(docRef, { read: true });
                         } catch (e) { }
+
+                        setIsNotificationsOpen(false);
+                        if (n.type === 'new_release' && n.tmdb_id) {
+                          try {
+                            const details = await fetchMovieDetails({ id: n.tmdb_id, media_type: 'tv', title: n.title || '' });
+                            setSelectedMovie(details);
+                          } catch (e) {}
+                        } else if (n.type === 'friend_watching' || n.type === 'friend_recommended') {
+                          setActiveTab('board');
+                        } else if (n.type === 'new_story') {
+                          setActiveTab('social');
+                        } else if (n.type === 'friend_request' || n.type === 'friend_accepted') {
+                          setActiveTab('profile');
+                        }
                       }}
                       className={`p-3 rounded-2xl text-sm transition-colors ${n.read ? (theme === 'dark' ? 'bg-white/5 text-zinc-400' : 'bg-slate-50 text-slate-600') : (theme === 'dark' ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-900 border border-indigo-100')}`}
                     >
@@ -3751,6 +3841,11 @@ Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, r
                   value={vaultSearch}
                   onChange={(e) => setVaultSearch(e.target.value)}
                 />
+                {vaultSearch && (
+                  <button onClick={() => setVaultSearch('')} className="ml-2 text-zinc-400 hover:text-rose-500 transition-colors">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => setIsManualAddOpen(true)}

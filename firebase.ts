@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY || "AIzaSyDwBYOpY6YUQ25Kl31xn7DoJn7cz3J7cjo",
@@ -16,3 +17,10 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// Firebase Messaging — only available in browsers that support it (not SSR, not all mobile browsers)
+// We export a promise so consumers can safely await support before calling getToken()
+export const messagingPromise = isSupported().then((supported) => {
+  if (supported) return getMessaging(app);
+  return null;
+});

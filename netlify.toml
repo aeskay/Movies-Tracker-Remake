@@ -1,0 +1,21 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Serve the Firebase Messaging service worker with the right headers
+[[headers]]
+  for = "/firebase-messaging-sw.js"
+  [headers.values]
+    Service-Worker-Allowed = "/"
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Service-Worker-Allowed = "/"
+    Cache-Control = "no-cache"
