@@ -2,20 +2,32 @@
   publish = "dist"
   command = "npm run build"
 
+# Prevent missing static assets from being served as index.html (which breaks module scripts)
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/*"
+  status = 404
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Never cache index.html so new deployments load immediately with their updated script hashes
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
 
 # Serve the Firebase Messaging service worker with the right headers
 [[headers]]
   for = "/firebase-messaging-sw.js"
   [headers.values]
     Service-Worker-Allowed = "/"
-    Cache-Control = "no-cache"
+    Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
   for = "/sw.js"
   [headers.values]
     Service-Worker-Allowed = "/"
-    Cache-Control = "no-cache"
+    Cache-Control = "no-cache, no-store, must-revalidate"
