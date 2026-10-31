@@ -1,6 +1,10 @@
 $desktop = "C:\Users\Samuel Alalade\Desktop"
 $tempDir = "$desktop\MovieTrackerBuildTemp"
 
+Write-Host "Building web bundle and syncing Capacitor..."
+npm run build
+npx cap sync android
+
 Write-Host "Copying to temp folder..."
 robocopy ".\" "$tempDir" /MIR /XD .git > $null
 
@@ -11,8 +15,9 @@ Push-Location "$tempDir\android"
 Pop-Location
 
 Write-Host "Searching for outputs..."
-$aab = Get-ChildItem -Path "$tempDir" -Recurse -Filter "*.aab" | Select-Object -First 1
-$apk = Get-ChildItem -Path "$tempDir" -Recurse -Filter "*-release*.apk" | Select-Object -First 1
+$outputSearchPaths = @("$tempDir", "$env:USERPROFILE\.gradle-builds\android")
+$aab = Get-ChildItem -Path $outputSearchPaths -Recurse -Filter "*.aab" -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*release*.aab" -or $_.Name -like "*app*.aab" } | Select-Object -First 1
+$apk = Get-ChildItem -Path $outputSearchPaths -Recurse -Filter "*-release*.apk" -ErrorAction SilentlyContinue | Select-Object -First 1
 
 if ($aab) {
     Copy-Item $aab.FullName -Destination "$desktop\MovieTracker-Release.aab" -Force

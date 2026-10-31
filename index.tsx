@@ -23,6 +23,7 @@ import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { AppUpdate, AppUpdateAvailability } from '@capawesome/capacitor-app-update';
 import {
   collection,
   doc,
@@ -1339,6 +1340,8 @@ const App = () => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [authStepText, setAuthStepText] = useState('');
 
   // CSV Import States
   const [isImporting, setIsImporting] = useState(false);
@@ -1529,6 +1532,53 @@ const App = () => {
     return unsubscribe;
   }, []);
 
+  // ─── Google Play In-App Updates ─────────────────────────────────────────────
+  // Automatically detects if an update is published on Google Play and prompts the user on open
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let flexibleHandle = null;
+
+    const checkAppUpdate = async () => {
+      try {
+        const updateInfo = await AppUpdate.getAppUpdateInfo();
+        console.log('Google Play Update Info:', updateInfo);
+        if (updateInfo.updateAvailability === AppUpdateAvailability.UPDATE_AVAILABLE) {
+          if (updateInfo.immediateUpdateAllowed) {
+            // Displays Google Play full-screen in-app update prompt
+            await AppUpdate.performImmediateUpdate();
+          } else if (updateInfo.flexibleUpdateAllowed) {
+            // Starts background download with Google Play
+            await AppUpdate.startFlexibleUpdate();
+          }
+        }
+      } catch (err) {
+        console.log('Google Play update check skipped / not available:', err);
+      }
+    };
+
+    if (Capacitor.getPlatform() === 'android') {
+      AppUpdate.addListener('onFlexibleUpdateStateChange', async (state) => {
+        if (state.installStatus === 11 /* DOWNLOADED */) {
+          setToast('Update downloaded! Restarting to install...');
+          setTimeout(async () => {
+            try {
+              await AppUpdate.completeFlexibleUpdate();
+            } catch (e) {
+              console.error('Failed to complete flexible update:', e);
+            }
+          }, 3000);
+        }
+      }).then(h => { flexibleHandle = h; }).catch(() => {});
+    }
+
+    checkAppUpdate();
+
+    return () => {
+      if (flexibleHandle) flexibleHandle.remove();
+    };
+  }, []);
+
   // ─── Push Notification Registration ──────────────────────────────────────────
   // Handles both native (Android/iOS via Capacitor) and web (FCM web push) paths.
   useEffect(() => {
@@ -1536,62 +1586,81 @@ const App = () => {
 
     if (Capacitor.isNativePlatform()) {
       // ── Native Path ──
-      const registerPush = async () => {
+      const setupNativePush = async () => {
         try {
+          // 1. Create notification channel first (CRITICAL for Android 8.0+)
+          try {
+            await PushNotifications.createChannel({
+              id: 'movies_tracker_default',
+              name: 'Movie Tracker Notifications',
+              description: 'Notifications for friend activity, recommendations, and releases',
+              importance: 5,
+              visibility: 1,
+              sound: 'default',
+              vibration: true,
+            });
+            console.log('Notification channel "movies_tracker_default" ensured');
+          } catch (chErr) {
+            console.warn('Channel creation error (may be iOS or older Android):', chErr);
+          }
+
+          // 2. Clear old listeners to prevent duplicate event triggers
+          await PushNotifications.removeAllListeners();
+
+          // 3. Attach listeners BEFORE requesting permissions / registering
+          // This eliminates the race condition where native registration fires before JS listener attaches
+          await PushNotifications.addListener('registration', async (token) => {
+            try {
+              const profileRef = doc(db, 'users', user.uid, 'profile', 'data');
+              await setDoc(profileRef, { fcmToken: token.value }, { merge: true });
+              console.log('Native FCM token successfully saved to Firestore:', token.value);
+            } catch (err) {
+              console.error('Failed to save native FCM token to Firestore:', err);
+            }
+          });
+
+          await PushNotifications.addListener('registrationError', (err) => {
+            console.error('Native push registration error:', err.error);
+          });
+
+          // Show foreground notifications as a toast
+          await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            const msg = notification.body || notification.title || 'New notification';
+            setToast(msg);
+          });
+
+          // Navigate based on notification type when tapped
+          await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+            const type = notification.notification.data?.type;
+            if (type === 'friend_request' || type === 'friend_accepted') {
+              setActiveTab('friends');
+              setIsNotificationsOpen(true);
+            } else if (type === 'friend_watching' || type === 'friend_recommended') {
+              setActiveTab('board');
+            } else if (type === 'new_story' || type === 'story_like') {
+              setActiveTab('friends');
+            } else {
+              setIsNotificationsOpen(true);
+            }
+          });
+
+          // 4. Request permissions and register with APNS / FCM
           let permStatus = await PushNotifications.checkPermissions();
           if (permStatus.receive === 'prompt') {
             permStatus = await PushNotifications.requestPermissions();
           }
           if (permStatus.receive !== 'granted') {
-            console.warn('Native push: permission denied');
+            console.warn('Native push: permission denied by user');
             return;
           }
+
           await PushNotifications.register();
         } catch (err) {
-          console.error('Native push registration error:', err);
+          console.error('Native push setup error:', err);
         }
       };
 
-      registerPush();
-
-      const addListeners = async () => {
-        await PushNotifications.addListener('registration', async (token) => {
-          try {
-            const profileRef = doc(db, 'users', user.uid, 'profile', 'data');
-            await setDoc(profileRef, { fcmToken: token.value }, { merge: true });
-            console.log('Native FCM token saved');
-          } catch (err) {
-            console.error('Failed to save native FCM token:', err);
-          }
-        });
-
-        await PushNotifications.addListener('registrationError', (err) => {
-          console.error('Native push registration error:', err.error);
-        });
-
-        // Show foreground notifications as a toast
-        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-          const msg = notification.body || notification.title || 'New notification';
-          setToast(msg);
-        });
-
-        // Navigate based on notification type when tapped
-        await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-          const type = notification.notification.data?.type;
-          if (type === 'friend_request' || type === 'friend_accepted') {
-            setActiveTab('profile');
-            setIsNotificationsOpen(true);
-          } else if (type === 'friend_watching' || type === 'friend_recommended') {
-            setActiveTab('board');
-          } else if (type === 'new_story') {
-            setActiveTab('social');
-          } else {
-            setIsNotificationsOpen(true);
-          }
-        });
-      };
-
-      addListeners();
+      setupNativePush();
 
       return () => {
         PushNotifications.removeAllListeners();
@@ -3040,7 +3109,7 @@ Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, r
             <div className={`flex-grow border-t ${theme === 'dark' ? 'border-white/5' : 'border-slate-200'}`}></div>
           </div>
 
-          <button onClick={handleGoogleAuth} className={`w-full py-4 bg-transparent border ${theme === 'dark' ? 'border-white/10 hover:bg-white/5 text-white' : 'border-slate-200 hover:bg-slate-50 text-slate-700'} rounded-2xl flex items-center justify-center gap-3 transition-colors text-sm font-black uppercase tracking-wider`}>
+          <button onClick={handleGoogleAuth} disabled={isAuthSubmitting} className={`w-full py-4 bg-transparent border ${theme === 'dark' ? 'border-white/10 hover:bg-white/5 text-white' : 'border-slate-200 hover:bg-slate-50 text-slate-700'} disabled:opacity-50 disabled:cursor-not-allowed rounded-2xl flex items-center justify-center gap-3 transition-colors text-sm font-black uppercase tracking-wider`}>
             <svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="currentColor" d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.555 0-6.44-2.885-6.44-6.44s2.885-6.44 6.44-6.44c1.633 0 3.125.61 4.27 1.615l3.076-3.076C19.123 2.259 15.82 1 12 1 5.925 1 12 5.925 1 12s4.925 11 11 11c5.55 0 10.25-4.015 10.25-10.25 0-.585-.05-1.16-.15-1.715h-9.86z" /></svg>
             Continue with Google
           </button>
@@ -3697,9 +3766,9 @@ Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, r
                         } else if (n.type === 'friend_watching' || n.type === 'friend_recommended') {
                           setActiveTab('board');
                         } else if (n.type === 'new_story') {
-                          setActiveTab('social');
+                          setActiveTab('friends');
                         } else if (n.type === 'friend_request' || n.type === 'friend_accepted') {
-                          setActiveTab('profile');
+                          setActiveTab('friends');
                         }
                       }}
                       className={`p-3 rounded-2xl text-sm transition-colors ${n.read ? (theme === 'dark' ? 'bg-white/5 text-zinc-400' : 'bg-slate-50 text-slate-600') : (theme === 'dark' ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20' : 'bg-indigo-50 text-indigo-900 border border-indigo-100')}`}

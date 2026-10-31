@@ -19,6 +19,7 @@ const NOTIF_TITLES = {
   friend_watching:    "🍿 Friend is Watching",
   friend_recommended: "⭐ Movie Recommended",
   new_story:          "📸 New Story from a Friend",
+  story_like:         "❤️ Story Liked",
   new_release:        "🎬 New Release Available",
   general:            "🎬 Share Movies"
 };
@@ -61,6 +62,7 @@ exports.sendPushNotification = onDocumentCreated(
       friend_watching:    "notify_watching",
       friend_recommended: "notify_recommended",
       new_story:          "notify_new_story",
+      story_like:         "notify_new_story",
       new_release:        "notify_release_watching",
     };
     const prefKey = typeToPrefsKey[notificationData.type];
@@ -78,7 +80,7 @@ exports.sendPushNotification = onDocumentCreated(
     // ── Build the FCM message ─────────────────────────────────────────────────
     const notifType = notificationData.type || "general";
     const title = NOTIF_TITLES[notifType] || NOTIF_TITLES.general;
-    const body = notificationData.text || "You have a new notification!";
+    const body = notificationData.text || notificationData.message || "You have a new notification!";
 
     const message = {
       token: fcmToken,
@@ -88,8 +90,9 @@ exports.sendPushNotification = onDocumentCreated(
         notification: {
           sound: "default",
           channelId: "movies_tracker_default",
-          icon: "ic_notification",
           color: "#6366f1",
+          defaultSound: true,
+          defaultVibrateTimings: true,
         },
       },
       apns: {
@@ -103,9 +106,10 @@ exports.sendPushNotification = onDocumentCreated(
       },
       // data payload so the client app can navigate on tap
       data: {
-        type: notifType,
-        senderId: notificationData.senderId || "",
-        text: body,
+        type: String(notifType),
+        senderId: String(notificationData.senderId || ""),
+        text: String(body),
+        tmdb_id: String(notificationData.tmdb_id || ""),
       },
     };
 
