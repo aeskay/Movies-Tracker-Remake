@@ -3697,7 +3697,7 @@ Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, r
         </div>
       )}
 
-      <nav className={`${navGlass} sticky top-0 z-50 px-6 py-5 flex items-center justify-between border-b ${theme === 'dark' ? 'border-white/5' : 'border-zinc-200'}`}>
+      <nav className={`${navGlass} sticky top-0 z-50 px-6 py-5 safe-top flex items-center justify-between border-b ${theme === 'dark' ? 'border-white/5' : 'border-zinc-200'}`}>
         <div className="flex items-center gap-4">
           <div>
             <h1 onClick={() => { setView('main'); setActiveTab('vault'); setIsDrawerOpen(false); }} className={`cursor-pointer text-xl font-bold font-questrial tracking-wide uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Share Movies</h1>
