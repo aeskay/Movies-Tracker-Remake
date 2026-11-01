@@ -3703,11 +3703,19 @@ Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, r
             <h1 onClick={() => { setView('main'); setActiveTab('vault'); setIsDrawerOpen(false); }} className={`cursor-pointer text-xl font-bold font-questrial tracking-wide uppercase leading-none ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Share Movies</h1>
             <div className="flex items-center gap-2 mt-1">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
-              {userProfile && userProfile.avatar?.startsWith('data:image') ? (
+              {userProfile && (userProfile.avatar?.startsWith('data:image') || userProfile.avatar?.startsWith('http')) ? (
                 <img src={userProfile.avatar} className="w-3.5 h-3.5 rounded-full object-cover border border-white/10" alt="avatar" />
               ) : null}
               <p className={`text-sm font-black uppercase tracking-[0.1em] ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>
-                {userProfile ? (userProfile.avatar?.startsWith('data:image') ? userProfile.username : `${userProfile.avatar} ${userProfile.username}`) : user.email}
+                {(() => {
+                  if (!userProfile) return user.email || 'User';
+                  const name = userProfile.username || (user.displayName || (user.email ? user.email.split('@')[0] : 'User'));
+                  const isImage = userProfile.avatar?.startsWith('data:image') || userProfile.avatar?.startsWith('http');
+                  if (userProfile.avatar && !isImage) {
+                    return `${userProfile.avatar} ${name}`;
+                  }
+                  return name;
+                })()}
               </p>
             </div>
           </div>
