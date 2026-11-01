@@ -1,4 +1,4 @@
-const CACHE_NAME = 'movies-tracker-v3';
+const CACHE_NAME = 'movies-tracker-v4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -15,38 +15,58 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const request = event.request;
 
-  // Skip non-GET requests and dev files
-  if (event.request.method !== 'GET') return;
+  // Only handle GET requests
+  if (request.method !== 'GET') return;
+
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch (e) {
+    return;
+  }
+
+  // Strictly only cache http and https requests from our own origin
+  // This ignores chrome-extension://, moz-extension://, font CDNs, APIs, etc.
+  if (!url.protocol.startsWith('http')) return;
+  if (url.origin !== self.location.origin) return;
+
+  // Bypass dev files
   if (url.pathname.includes('/@') || url.pathname.includes('node_modules')) return;
 
   // Network-first for HTML / navigation requests to always receive the latest deployment
-  if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+  if (request.mode === 'navigate' || (request.headers.get('accept') && request.headers.get('accept').includes('text/html'))) {
     event.respondWith(
-      fetch(event.request)
+      fetch(request)
         .then((response) => {
           if (response && response.status === 200) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, clone).catch(() => {});
+            }).catch(() => {});
           }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(request))
     );
     return;
   }
 
-  // Stale-while-revalidate for static assets
+  // Stale-while-revalidate for local static assets
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return networkResponse;
-      }).catch(() => cached);
+    caches.match(request).then((cached) => {
+      const fetchPromise = fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, clone).catch(() => {});
+            }).catch(() => {});
+          }
+          return networkResponse;
+        })
+        .catch(() => cached);
 
       return cached || fetchPromise;
     })
