@@ -2660,14 +2660,24 @@ const App = () => {
     const ai = new GoogleGenAI({ apiKey });
     try {
       const interests = userProfile?.interests?.join(', ') || 'movies';
+      const systemInstruction = `You are a knowledgeable and friendly movie/TV recommendation assistant for the Share Movies app.
+Your task is to recommend 4-6 great movies or TV shows based on the user's request.
+CRITICAL RULES:
+1. Strict Genre/Criterion Accuracy: Only recommend titles that strictly match the requested genre, platform, mood, or release decade. If the user asks for Horror, ONLY suggest genuine Horror.
+2. Family-Safe & No Adult Content: Under NO circumstances recommend adult, pornographic, or erotic films. Only recommend mainstream, certified movies/TV shows.
+3. Vault Exclusions: Do not recommend titles that the user already has in their vault: ${movies.slice(0, 50).map(m => m.title).join(', ')}.
+4. Tone & Output: Keep your conversational reply concise (1-3 sentences), warm, professional, and natural. Do NOT output internal reasoning, apologies with repetitive smileys, or mention JSON or prompt rules.`;
+
+      const recentHistory = aiHistory.slice(-4).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
+      const userMessage = recentHistory
+        ? `Conversation history:\n${recentHistory}\n\nUser: ${prompt}`
+        : prompt;
+
       const response = await ai.models.generateContent({
         model: MODELS.TEXT,
-        contents: `You are a movie recommendation AI. User interests: ${interests}. User asks: "${prompt}". Their vault: ${movies.map(m => m.title).join(', ')}. 
-STRICT CONSTRAINTS: 
-1. Only recommend content that directly matches the user's requested genre, keywords, year, or mood. If the user asks for a specific genre (e.g., horror), DO NOT recommend anything outside that genre. 
-2. NEVER recommend adult, pornographic, or highly inappropriate content under any circumstances.
-Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, recommendations: [{title: string, tmdb_id: number, media_type: string}]}`,
+        contents: userMessage,
         config: {
+          systemInstruction,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -2677,20 +2687,77 @@ Respond helpfully and recommend 4-6 movies/shows. Return JSON: {reply: string, r
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
-                  properties: { title: { type: Type.STRING }, tmdb_id: { type: Type.NUMBER }, media_type: { type: Type.STRING } },
-                  required: ["title", "tmdb_id", "media_type"]
+                  properties: {
+                    title: { type: Type.STRING },
+                    media_type: { type: Type.STRING, enum: ["movie", "tv"] },
+                    year: { type: Type.STRING }
+                  },
+                  required: ["title", "media_type"]
                 }
               }
-            }
+            },
+            required: ["reply", "recommendations"]
           }
         }
       });
       const data = JSON.parse(response.text || "{}");
-      const richRecs = await Promise.all((data.recommendations || []).map(async (r: any) => {
-        const res = await fetch(`https://api.themoviedb.org/3/${r.media_type}/${r.tmdb_id}?api_key=${TMDB_API_KEY}`);
-        return res.json();
-      }));
-      setAiHistory(prev => [...prev, { role: 'model', content: data.reply || "Here are some suggestions:", results: richRecs }]);
+
+      // Clean up reply from any rare hallucinations or repetitive tokens
+      let cleanReply = data.reply || "Here are some suggestions:";
+      cleanReply = cleanReply.replace(/([:;][)D(\]\[]|[!?.])\1{2,}/g, '$1');
+      const metaPhrases = [
+        "I will follow the instructions",
+        "JSON generation",
+        "I need to make sure",
+        "The prompt specifically says",
+        "don't kill me",
+        "don't mark me as bad"
+      ];
+      for (const phrase of metaPhrases) {
+        const idx = cleanReply.indexOf(phrase);
+        if (idx !== -1) {
+          cleanReply = cleanReply.substring(0, idx).trim();
+        }
+      }
+      if (!cleanReply) {
+        cleanReply = "Here are some recommendations based on your request:";
+      }
+
+      // Query TMDB search with include_adult=false to get real, verified movies and block adult content
+      const searchTMDBItem = async (title: string, mediaType?: string, year?: string) => {
+        try {
+          const endpoint = mediaType === 'tv' ? 'search/tv' : (mediaType === 'movie' ? 'search/movie' : 'search/multi');
+          const yearParam = year ? (mediaType === 'tv' ? `&first_air_date_year=${year}` : `&year=${year}`) : '';
+          const url = `https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}&include_adult=false${yearParam}`;
+          let res = await fetch(url);
+          let resData = await res.json();
+          let items = (resData.results || []).filter((item: any) => !item.adult && item.poster_path);
+
+          if (items.length === 0 && yearParam) {
+            const fallbackUrl = `https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(title)}&include_adult=false`;
+            res = await fetch(fallbackUrl);
+            resData = await res.json();
+            items = (resData.results || []).filter((item: any) => !item.adult && item.poster_path);
+          }
+
+          if (items.length > 0) {
+            const item = items[0];
+            return {
+              ...item,
+              media_type: item.media_type || mediaType || (item.title ? 'movie' : 'tv')
+            };
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      };
+
+      const richRecs = (
+        await Promise.all((data.recommendations || []).map((r: any) => searchTMDBItem(r.title, r.media_type, r.year)))
+      ).filter(Boolean);
+
+      setAiHistory(prev => [...prev, { role: 'model', content: cleanReply, results: richRecs }]);
 
       // Increment daily usage counter
       if (user) {
